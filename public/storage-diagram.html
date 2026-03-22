@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>链上链下协同存储机制</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Microsoft YaHei', 'SimHei', Arial, sans-serif;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+  .diagram { width: 820px; background: #fff; }
+
+  .title {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 24px;
+    letter-spacing: 1px;
+  }
+
+  /* 三列 */
+  .columns {
+    display: grid;
+    grid-template-columns: 200px 1fr 200px;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  .col-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    padding: 7px 10px;
+    border-radius: 6px 6px 0 0;
+    letter-spacing: 0.5px;
+    color: #fff;
+  }
+  .col-title.actor { background: #475569; }
+  .col-title.chain { background: #2563eb; }
+  .col-title.ipfs  { background: #475569; }
+
+  .col-body {
+    border: 1.5px solid #cbd5e1;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 14px 12px;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .col-body.chain-col {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+  }
+
+  /* 步骤盒子 */
+  .step {
+    border-radius: 6px;
+    padding: 9px 11px;
+    font-size: 11.5px;
+    line-height: 1.6;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+  }
+  .step.chain {
+    background: #dbeafe;
+    border-color: #93c5fd;
+  }
+  .step-title {
+    font-weight: 700;
+    font-size: 12px;
+    margin-bottom: 3px;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .step-title .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    background: #475569;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .step.chain .step-title .num { background: #2563eb; }
+  .step-body { color: #475569; font-size: 11px; padding-left: 24px; }
+
+  /* 分隔 */
+  .divider { border: none; border-top: 1.5px dashed #cbd5e1; margin: 2px 0; }
+  .phase-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-align: center;
+    letter-spacing: 0.5px;
+  }
+
+  /* 数据标签 */
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin: 1px 1px 1px 0;
+    background: #e2e8f0;
+    color: #334155;
+  }
+  .tag.blue { background: #dbeafe; color: #1d4ed8; }
+  .tag.dark { background: #e2e8f0; color: #334155; }
+
+  /* 中间箭头区 */
+  .mid-col {
+    display: grid;
+    grid-template-columns: 52px 1fr 52px;
+  }
+  .arrow-lane {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 16px;
+    font-size: 11px;
+    color: #64748b;
+    gap: 0;
+  }
+  .arrow-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 10px 0;
+    gap: 2px;
+  }
+  .arrow-item .arr { font-size: 15px; line-height: 1; }
+  .arrow-item .lbl {
+    font-size: 9.5px;
+    color: #64748b;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* 图例 */
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #475569;
+  }
+  .legend-box {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1px solid;
+  }
+</style>
+</head>
+<body>
+<div class="diagram">
+  <div class="title">链上链下协同存储机制示意图</div>
+
+  <div class="columns">
+
+    <!-- 左列：参与方 -->
+    <div>
+      <div class="col-title actor">供应链参与方</div>
+      <div class="col-body">
+        <div class="phase-label">— 数据写入 —</div>
+
+        <div class="step">
+          <div class="step-title"><span class="num">1</span>生成业务数据</div>
+          <div class="step-body">生产记录、质检报告、<br>物流轨迹、原始文档</div>
+        </div>
+
+        <div class="step">
+          <div class="step-title"><span class="num">2</span>生成可验证凭证</div>
+          <div class="step-body">
+            <span class="tag dark">零部件 DID</span>
+            <span class="tag dark">VC 内容</span><br>
+            对凭证内容进行哈希计算
+          </div>
+        </div>
+
+        <hr class="divider">
+        <div class="phase-label">— 溯源查询 —</div>
+
+        <div class="step">
+          <div class="step-title"><span class="num">6</span>发起溯源查询</div>
+          <div class="step-body">输入零部件 DID，<br>请求完整溯源信息</div>
+        </div>
+
+        <div class="step">
+          <div class="step-title"><span class="num">9</span>获取验证结果</div>
+          <div class="step-body">
+            Hash 一致 → 展示数据<br>
+            Hash 不一致 → 拒绝展示
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中间：箭头 + 区块链 + 箭头 -->
+    <div class="mid-col">
+
+      <!-- 左箭头 -->
+      <div class="arrow-lane">
+        <div style="height:48px"></div>
+        <div class="arrow-item">
+          <span class="arr">→</span>
+          <span class="lbl">Hash<br>+DID</span>
+        </div>
+        <div style="height:36px"></div>
+        <div class="arrow-item">
+          <span class="arr">→</span>
+          <span class="lbl">CID<br>Hash</span>
+        </div>
+        <div style="height:64px"></div>
+        <div class="arrow-item">
+          <span class="arr">→</span>
+          <span class="lbl">DID<br>查询</span>
+        </div>
+        <div style="height:14px"></div>
+        <div class="arrow-item">
+          <span class="arr">←</span>
+          <span class="lbl">CID<br>+Hash</span>
+        </div>
+        <div style="height:8px"></div>
+        <div class="arrow-item">
+          <span class="arr">←</span>
+          <span class="lbl">链上<br>Hash</span>
+        </div>
+      </div>
+
+      <!-- 区块链列 -->
+      <div>
+        <div class="col-title chain">区块链层（链上存证）</div>
+        <div class="col-body chain-col">
+          <div class="phase-label">— 数据写入 —</div>
+
+          <div class="step chain">
+            <div class="step-title"><span class="num">3</span>智能合约写入存证</div>
+            <div class="step-body">
+              <span class="tag blue">Hash(VC)</span>
+              <span class="tag blue">凭证ID</span>
+              <span class="tag blue">零部件DID</span><br>
+              不可篡改，作为可信锚点
+            </div>
+          </div>
+
+          <div class="step chain">
+            <div class="step-title"><span class="num">5</span>记录 CID 映射</div>
+            <div class="step-body">
+              <span class="tag blue">CID</span>
+              <span class="tag blue">Hash(CID)</span><br>
+              凭证ID ↔ CID 建立映射，<br>实现链上链下可信绑定
+            </div>
+          </div>
+
+          <hr class="divider">
+          <div class="phase-label">— 溯源查询 —</div>
+
+          <div class="step chain">
+            <div class="step-title"><span class="num">7</span>返回凭证索引</div>
+            <div class="step-body">
+              根据 DID 返回<br>
+              <span class="tag blue">CID 列表</span>
+              <span class="tag blue">链上 Hash</span>
+            </div>
+          </div>
+
+          <div class="step chain">
+            <div class="step-title"><span class="num">8b</span>哈希比对验证</div>
+            <div class="step-body">
+              Hash(IPFS数据) vs 链上Hash<br>
+              验证数据完整性
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右箭头 -->
+      <div class="arrow-lane">
+        <div style="height:104px"></div>
+        <div class="arrow-item">
+          <span class="arr">→</span>
+          <span class="lbl">完整<br>VC</span>
+        </div>
+        <div style="height:72px"></div>
+        <div class="arrow-item">
+          <span class="arr">→</span>
+          <span class="lbl">CID<br>查询</span>
+        </div>
+        <div style="height:18px"></div>
+        <div class="arrow-item">
+          <span class="arr">←</span>
+          <span class="lbl">完整<br>数据</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右列：IPFS -->
+    <div>
+      <div class="col-title ipfs">IPFS 分布式存储（链下）</div>
+      <div class="col-body">
+        <div class="phase-label">— 数据写入 —</div>
+
+        <div class="step">
+          <div class="step-title"><span class="num">4</span>上传完整凭证数据</div>
+          <div class="step-body">
+            <span class="tag dark">完整 VC</span>
+            <span class="tag dark">原始文件</span><br>
+            基于内容寻址生成<br>
+            <span class="tag dark">CID</span>（内容标识符）
+          </div>
+        </div>
+
+        <hr class="divider">
+        <div class="phase-label">— 溯源查询 —</div>
+
+        <div class="step">
+          <div class="step-title"><span class="num">8a</span>通过 CID 检索数据</div>
+          <div class="step-body">
+            CID → 定位文件<br>
+            返回完整凭证内容
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-box" style="background:#eff6ff;border-color:#93c5fd"></div>
+      区块链链上存证数据
+    </div>
+    <div class="legend-item">
+      <div class="legend-box" style="background:#f8fafc;border-color:#cbd5e1"></div>
+      链下业务数据
+    </div>
+    <div class="legend-item">
+      <span class="tag blue">Hash</span> 哈希摘要（不可篡改锚点）
+    </div>
+    <div class="legend-item">
+      <span class="tag dark">CID</span> IPFS 内容标识符
+    </div>
+  </div>
+</div>
+</body>
+</html>
