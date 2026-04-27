@@ -80,11 +80,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { WarningFilled, SuccessFilled } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
 import { useStore } from 'vuex'
+import { getAlertList, handleAlert as handleAlertApi } from '@/api/anomaly'
 
 const store = useStore()
 const alertList = ref([])
@@ -104,12 +104,16 @@ const filteredAlerts = computed(() => {
   return list
 })
 
-const fetchAlerts = () => {
-  setTimeout(() => {
-    const res = mockData.getMockData('/api/anomaly/alert/list', 'get')
-    alertList.value = res.data.list
+const fetchAlerts = async () => {
+  try {
+    const res = await getAlertList({})
+    const data = res.data || {}
+    alertList.value = data.list || []
+    await nextTick()
     store.dispatch('anomaly/setUnreadAlerts', unhandled.value)
-  }, 300)
+  } catch {
+    alertList.value = []
+  }
 }
 
 const openHandleDialog = (alert) => {
@@ -118,35 +122,39 @@ const openHandleDialog = (alert) => {
   handleDialogVisible.value = true
 }
 
-const submitHandle = () => {
+const handlerName = computed(() => store.state.user.userInfo?.realName || store.state.user.userInfo?.username || '当前用户')
+
+const submitHandle = async () => {
   if (!handleForm.result.trim()) {
     ElMessage.warning('请输入处理说明')
     return
   }
-  const idx = mockData.alerts.findIndex(a => a.id === currentAlert.value.id)
-  if (idx !== -1) {
-    Object.assign(mockData.alerts[idx], {
-      status: 1,
-      handler: '系统管理员',
-      handleTime: new Date().toLocaleString(),
+  try {
+    await handleAlertApi({
+      id: currentAlert.value.id,
+      handler: handlerName.value,
       handleResult: handleForm.result
     })
+    ElMessage.success('预警已处理')
+    handleDialogVisible.value = false
+    await fetchAlerts()
+  } catch {
+    /* 拦截器已提示 */
   }
-  ElMessage.success('预警已处理')
-  handleDialogVisible.value = false
-  fetchAlerts()
 }
 
-const ignoreAlert = (alert) => {
-  const idx = mockData.alerts.findIndex(a => a.id === alert.id)
-  if (idx !== -1) {
-    mockData.alerts[idx].status = 1
-    mockData.alerts[idx].handler = '系统管理员'
-    mockData.alerts[idx].handleTime = new Date().toLocaleString()
-    mockData.alerts[idx].handleResult = '已忽略'
+const ignoreAlert = async (alert) => {
+  try {
+    await handleAlertApi({
+      id: alert.id,
+      handler: handlerName.value,
+      handleResult: '已忽略'
+    })
+    ElMessage.info('已忽略该预警')
+    await fetchAlerts()
+  } catch {
+    /* 拦截器已提示 */
   }
-  ElMessage.info('已忽略该预警')
-  fetchAlerts()
 }
 
 onMounted(fetchAlerts)

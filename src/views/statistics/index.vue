@@ -110,6 +110,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import mockData from '@/utils/mock'
+import { getDashboardStats } from '@/api/dashboard'
+import { getEventList } from '@/api/trace'
+import { getAlertList } from '@/api/anomaly'
+import { getPartsList } from '@/api/parts'
 
 const statsData = ref({})
 const latestParts = ref([])
@@ -176,11 +180,32 @@ const genTrend = () => {
   })
 }
 
-const loadData = () => {
-  const s = mockData.getMockData('/api/dashboard/stats','get'); if(s?.data) statsData.value=s.data
-  const e = mockData.getMockData('/api/trace/event/list','get'); if(e?.data) allEvents.value=e.data.list
-  const a = mockData.getMockData('/api/anomaly/alert/list','get'); if(a?.data) allAlerts.value=a.data.list
-  const p = mockData.getMockData('/api/parts/list','get'); if(p?.data) latestParts.value=p.data.list
+const loadData = async () => {
+  try {
+    const s = await getDashboardStats()
+    if (s?.data) statsData.value = s.data
+  } catch {
+    statsData.value = {}
+  }
+  try {
+    const e = await getEventList({ page: 1, pageSize: 500 })
+    allEvents.value = e?.data?.list || []
+  } catch {
+    allEvents.value = []
+  }
+  try {
+    const a = await getAlertList({})
+    allAlerts.value = a?.data?.list || []
+  } catch {
+    allAlerts.value = []
+  }
+  try {
+    const p = await getPartsList({ page: 1, pageSize: 20 })
+    const pageData = p?.data || {}
+    latestParts.value = pageData.records || pageData.list || []
+  } catch {
+    latestParts.value = []
+  }
   genTrend()
 }
 

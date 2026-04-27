@@ -27,7 +27,7 @@
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
           <el-button size="small" link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button size="small" link type="danger" @click="deletePerm(row)">删除</el-button>
+          <el-button size="small" link type="danger" @click="deletePermRow(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -69,7 +69,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import { getPermissionTree, createPermission, updatePermission, deletePermission } from '@/api/user'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -91,13 +91,14 @@ const rules = {
 
 const typeTag = (type) => ({ menu: '', button: 'success', api: 'warning' }[type] || '')
 
-const fetchPerms = () => {
+const fetchPerms = async () => {
   loading.value = true
-  setTimeout(() => {
-    const res = mockData.getMockData('/api/permission/tree', 'get')
-    permList.value = mockData.buildTree(res.data)
+  try {
+    const res = await getPermissionTree()
+    permList.value = res.data || []
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
 const openDialog = (row = null) => {
@@ -114,30 +115,28 @@ const openDialog = (row = null) => {
 
 const submitForm = async () => {
   if (!formRef.value) return
-  await formRef.value.validate((valid) => {
-    if (valid) {
-      submitting.value = true
-      setTimeout(() => {
-        if (form.id) {
-          const idx = mockData.permissions.findIndex(p => p.id === form.id)
-          if (idx !== -1) Object.assign(mockData.permissions[idx], form)
-          ElMessage.success('更新成功')
-        } else {
-          mockData.permissions.push({ ...form, id: Date.now(), parentId: 0, status: 1 })
-          ElMessage.success('创建成功')
-        }
-        submitting.value = false
-        dialogVisible.value = false
-        fetchPerms()
-      }, 400)
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    submitting.value = true
+    try {
+      if (form.id) {
+        await updatePermission(form)
+        ElMessage.success('更新成功')
+      } else {
+        await createPermission(form)
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      fetchPerms()
+    } finally {
+      submitting.value = false
     }
   })
 }
 
-const deletePerm = async (row) => {
+const deletePermRow = async (row) => {
   await ElMessageBox.confirm(`确定删除权限「${row.permissionName}」吗？`, '警告', { type: 'warning' })
-  const idx = mockData.permissions.findIndex(p => p.id === row.id)
-  if (idx !== -1) mockData.permissions.splice(idx, 1)
+  await deletePermission(row.id)
   ElMessage.success('删除成功')
   fetchPerms()
 }
@@ -149,5 +148,4 @@ onMounted(fetchPerms)
 .page-container { display: flex; flex-direction: column; gap: 20px; }
 .page-header { display: flex; justify-content: space-between; align-items: center; }
 .page-header h2 { font-size: 22px; font-weight: 700; color: #1e293b; margin: 0; }
-
 </style>

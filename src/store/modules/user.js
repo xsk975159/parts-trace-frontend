@@ -28,16 +28,19 @@ export default {
   actions: {
     async login({ commit }, loginForm) {
       const res = await login(loginForm)
-      if (res.code !== 200) {
-        return Promise.reject(new Error(res.message || '登录失败'))
+      const token = res.data.accessToken || res.data.token
+      if (!token) {
+        return Promise.reject(new Error('登录返回缺少 token'))
       }
-      commit('SET_TOKEN', res.data.token)
+      commit('SET_TOKEN', token)
       return res
     },
     async getUserInfo({ commit }) {
       const res = await getUserInfo()
-      commit('SET_USER_INFO', res.data.userInfo)
-      commit('SET_PERMISSIONS', res.data.permissions)
+      const userInfo = res.data.userInfo || res.data
+      const permissions = res.data.permissions || []
+      commit('SET_USER_INFO', userInfo)
+      commit('SET_PERMISSIONS', permissions)
       return res
     },
     logout({ commit }) {

@@ -64,6 +64,12 @@ const routes = [
             name: 'PartsList',
             component: () => import('@/views/parts/list.vue'),
             meta: { title: '零部件列表', icon: 'List' }
+          },
+          {
+            path: 'did',
+            name: 'PartsDid',
+            component: () => import('@/views/parts/did.vue'),
+            meta: { title: 'DID管理', icon: 'Key' }
           }
         ]
       },
@@ -71,9 +77,15 @@ const routes = [
       {
         path: 'trace',
         name: 'Trace',
-        redirect: '/trace/event',
+        redirect: '/trace/workbench',
         meta: { title: '零部件溯源', icon: 'Connection' },
         children: [
+          {
+            path: 'workbench',
+            name: 'TraceWorkbench',
+            component: () => import('@/views/trace/workbench.vue'),
+            meta: { title: '批次溯源工作台', icon: 'Monitor' }
+          },
           {
             path: 'event',
             name: 'TraceEvent',

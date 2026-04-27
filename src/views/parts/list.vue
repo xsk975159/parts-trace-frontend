@@ -18,10 +18,38 @@
         <el-option label="草稿" :value="0" />
         <el-option label="已归档" :value="2" />
       </el-select>
+      <el-select v-model="unitFilter.status" placeholder="单件状态" clearable style="width:140px">
+        <el-option label="全部单件" value="" />
+        <el-option label="未处理" :value="0" />
+        <el-option label="处理中" :value="1" />
+        <el-option label="已完成" :value="2" />
+        <el-option label="异常" :value="3" />
+      </el-select>
+      <el-input v-model="unitFilter.keyword" placeholder="筛选单件编码" clearable style="width:180px" />
       <el-button type="primary" :icon="Search" @click="fetchParts">搜索</el-button>
     </div>
 
     <el-table :data="partsList" v-loading="loading" class="data-table">
+      <el-table-column type="expand">
+        <template #default="{ row }">
+          <div class="unit-panel">
+            <div class="unit-panel-header">
+              <span>批次内单件（{{ getFilteredUnits(row).length }}/{{ getUnits(row).length }}）</span>
+              <el-button link type="primary" @click="loadUnits(row, true)">刷新单件</el-button>
+            </div>
+            <el-table :data="getFilteredUnits(row)" size="small" border>
+              <el-table-column prop="unitCode" label="单件编码" min-width="180" />
+              <el-table-column label="单件状态" width="120">
+                <template #default="{ row: unit }">
+                  <el-tag :type="unitStatusTag(unit.unitStatus)" size="small">{{ unitStatusLabel(unit.unitStatus) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="createTime" label="创建时间" min-width="180" />
+            </el-table>
+            <el-empty v-if="!getUnits(row).length" description="该批次暂无单件数据，可到工作台初始化单件" :image-size="60" />
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column prop="partsCode" label="零部件编码" width="140" />
       <el-table-column prop="partsName" label="名称" min-width="150" />
       <el-table-column prop="batchNumber" label="批次号" width="130" />
@@ -76,7 +104,7 @@
             <el-form-item label="材质"><el-input v-model="form.material" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="数量"><el-input-number v-model="form.quantity" :min="0" style="width:100%" /></el-form-item>
+            <el-form-item label="数量" prop="quantity"><el-input-number v-model="form.quantity" :min="1" style="width:100%" /></el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="单位"><el-input v-model="form.unit" placeholder="个/件/套" /></el-form-item>
@@ -133,7 +161,15 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import {
+  getCategoryList,
+  getPartsList,
+  getPartsUnitsByBatch,
+  getPartsDetail,
+  createParts,
+  updateParts,
+  deleteParts as deletePartsApi
+} from '@/api/parts'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -144,8 +180,11 @@ const formRef = ref(null)
 const partsList = ref([])
 const categories = ref([])
 const currentPart = ref(null)
+const unitsByBatch = reactive({})
+const unitLoading = reactive({})
 
 const searchForm = reactive({ keyword: '', categoryId: '', status: '' })
+const unitFilter = reactive({ keyword: '', status: '' })
 const pagination = reactive({ page: 1, size: 10, total: 0 })
 
 const form = reactive({
@@ -158,76 +197,171 @@ const rules = {
   partsCode: [{ required: true, message: '请输入零部件编码', trigger: 'blur' }],
   partsName: [{ required: true, message: '请输入零部件名称', trigger: 'blur' }],
   batchNumber: [{ required: true, message: '请输入批次号', trigger: 'blur' }],
-  categoryId: [{ required: true, message: '请选择分类', trigger: 'change' }]
+  categoryId: [{ required: true, message: '请选择分类', trigger: 'change' }],
+  quantity: [{ required: true, message: '请输入数量', trigger: 'change' }]
 }
 
 const statusLabel = (s) => ({ 0: '草稿', 1: '正常', 2: '已归档', 3: '已废弃' }[s] ?? '未知')
 const statusTag = (s) => ({ 0: 'info', 1: 'success', 2: 'warning', 3: 'danger' }[s] ?? '')
+const unitStatusLabel = (s) => ({ 0: '未处理', 1: '处理中', 2: '已完成', 3: '异常' }[s] ?? `状态${s ?? '-'}`)
+const unitStatusTag = (s) => ({ 0: 'info', 1: 'warning', 2: 'success', 3: 'danger' }[s] ?? '')
 
-const fetchParts = () => {
+const getUnits = (part) => unitsByBatch[part.batchNumber] || []
+const getFilteredUnits = (part) => {
+  const list = getUnits(part)
+  const keyword = unitFilter.keyword.trim()
+  return list.filter((unit) => {
+    const keywordMatch = !keyword || (unit.unitCode || '').includes(keyword)
+    const statusMatch = unitFilter.status === '' || unit.unitStatus === unitFilter.status
+    return keywordMatch && statusMatch
+  })
+}
+
+const loadUnits = async (part, force = false) => {
+  const batchNumber = part.batchNumber
+  if (!batchNumber) return
+  if (!force && unitsByBatch[batchNumber]) return
+  if (unitLoading[batchNumber]) return
+  unitLoading[batchNumber] = true
+  try {
+    const res = await getPartsUnitsByBatch(batchNumber)
+    unitsByBatch[batchNumber] = res.data || []
+  } finally {
+    unitLoading[batchNumber] = false
+  }
+}
+
+const fetchParts = async () => {
   loading.value = true
-  setTimeout(() => {
-    const res = mockData.getMockData('/api/parts/list', 'get')
-    let list = res.data.list
-    if (searchForm.keyword) {
-      const kw = searchForm.keyword.toLowerCase()
-      list = list.filter(p => p.partsCode.includes(kw) || p.partsName.includes(kw))
+  try {
+    const params = {
+      page: pagination.page,
+      pageSize: pagination.size,
+      categoryId: searchForm.categoryId || undefined,
+      status: searchForm.status === '' ? undefined : searchForm.status
     }
-    if (searchForm.categoryId) list = list.filter(p => p.categoryId === searchForm.categoryId)
-    if (searchForm.status !== '') list = list.filter(p => p.status === searchForm.status)
-    pagination.total = list.length
-    partsList.value = list
+
+    const keyword = searchForm.keyword.trim()
+    if (keyword) {
+      params.partsName = keyword
+    }
+
+    const res = await getPartsList(params)
+    const pageData = res.data || {}
+    partsList.value = pageData.records || pageData.list || []
+    partsList.value.forEach((part) => loadUnits(part))
+    pagination.total = pageData.total || 0
+    if (pageData.current) pagination.page = pageData.current
+    if (pageData.size) pagination.size = pageData.size
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
-const fetchCategories = () => {
-  categories.value = mockData.getMockData('/api/parts/category/list', 'get').data.list
+const fetchCategories = async () => {
+  const res = await getCategoryList()
+  categories.value = res.data || []
 }
 
-const viewDetail = (row) => { currentPart.value = row; drawerVisible.value = true }
+const viewDetail = async (row) => {
+  const res = await getPartsDetail(row.id)
+  currentPart.value = res.data
+  drawerVisible.value = true
+}
 
 const openDialog = (row = null) => {
   if (formRef.value) formRef.value.resetFields()
   if (row) {
-    dialogTitle.value = '编辑零部件'; Object.assign(form, row)
+    dialogTitle.value = '编辑零部件'
+    Object.assign(form, row)
   } else {
     dialogTitle.value = '新增零部件'
-    Object.assign(form, { id: null, partsCode: '', partsName: '', batchNumber: '', categoryId: '',
-      specification: '', material: '', quantity: 0, unit: '个',
-      manufacturer: '', productionDate: '', qualityStandard: '', weight: 0, description: '' })
+    Object.assign(form, {
+      id: null,
+      partsCode: '',
+      partsName: '',
+      batchNumber: '',
+      categoryId: '',
+      specification: '',
+      material: '',
+      quantity: 0,
+      unit: '个',
+      manufacturer: '',
+      productionDate: '',
+      qualityStandard: '',
+      weight: 0,
+      description: ''
+    })
   }
   dialogVisible.value = true
 }
 
 const submitForm = async () => {
   if (!formRef.value) return
-  await formRef.value.validate((valid) => {
+  await formRef.value.validate(async (valid) => {
     if (valid) {
       submitting.value = true
-      setTimeout(() => {
+      try {
+        const createPayload = {
+          partsCode: form.partsCode,
+          partsName: form.partsName,
+          batchNumber: form.batchNumber,
+          categoryId: form.categoryId,
+          specification: form.specification,
+          material: form.material,
+          quantity: form.quantity,
+          unit: form.unit,
+          manufacturer: form.manufacturer,
+          productionDate: form.productionDate,
+          qualityStandard: form.qualityStandard,
+          weight: form.weight,
+          description: form.description
+        }
+
+        const updatePayload = {
+          id: form.id,
+          partsName: form.partsName,
+          categoryId: form.categoryId,
+          specification: form.specification,
+          material: form.material,
+          quantity: form.quantity,
+          unit: form.unit,
+          manufacturer: form.manufacturer,
+          productionDate: form.productionDate,
+          qualityStandard: form.qualityStandard,
+          weight: form.weight,
+          description: form.description
+        }
+
         if (form.id) {
-          const idx = mockData.parts.findIndex(p => p.id === form.id)
-          if (idx !== -1) Object.assign(mockData.parts[idx], form)
+          await updateParts(updatePayload)
           ElMessage.success('更新成功')
         } else {
-          mockData.parts.push({ ...form, id: Date.now(), status: 1, creatorId: 1, createTime: new Date().toLocaleString() })
+          await createParts(createPayload)
           ElMessage.success('创建成功')
+          pagination.page = 1
         }
-        submitting.value = false; dialogVisible.value = false; fetchParts()
-      }, 400)
+
+        dialogVisible.value = false
+        await fetchParts()
+      } finally {
+        submitting.value = false
+      }
     }
   })
 }
 
 const deleteParts = async (row) => {
   await ElMessageBox.confirm(`确定删除零部件「${row.partsName}」吗？`, '警告', { type: 'warning' })
-  const idx = mockData.parts.findIndex(p => p.id === row.id)
-  if (idx !== -1) mockData.parts.splice(idx, 1)
-  ElMessage.success('删除成功'); fetchParts()
+  await deletePartsApi(row.id)
+  ElMessage.success('删除成功')
+  await fetchParts()
 }
 
-onMounted(() => { fetchCategories(); fetchParts() })
+onMounted(async () => {
+  await fetchCategories()
+  await fetchParts()
+})
 </script>
 
 <style scoped>
@@ -235,6 +369,8 @@ onMounted(() => { fetchCategories(); fetchParts() })
 .page-header { display: flex; justify-content: space-between; align-items: center; }
 .page-header h2 { font-size: 22px; font-weight: 700; color: #1e293b; margin: 0; }
 .search-bar { display: flex; gap: 12px; flex-wrap: wrap; }
+.unit-panel { padding: 8px 20px 14px; background: #f8fafc; border-radius: 6px; }
+.unit-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; color: #334155; font-weight: 600; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
 .detail-content { padding: 0 4px; }
 .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

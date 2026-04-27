@@ -3,16 +3,25 @@ import request from '@/utils/request'
 // 用户登录
 export function login(data) {
   return request({
-    url: '/api/user/login',
+    url: '/login',
     method: 'post',
     data
   })
 }
 
-// 获取用户信息
+// 用户注册
+export function register(data) {
+  return request({
+    url: '/register',
+    method: 'post',
+    data
+  })
+}
+
+// 获取当前用户信息
 export function getUserInfo() {
   return request({
-    url: '/api/user/info',
+    url: '/user/info',
     method: 'get'
   })
 }
@@ -20,7 +29,7 @@ export function getUserInfo() {
 // 获取用户列表
 export function getUserList(params) {
   return request({
-    url: '/api/user/list',
+    url: '/user/list',
     method: 'get',
     params
   })
@@ -29,7 +38,7 @@ export function getUserList(params) {
 // 创建用户
 export function createUser(data) {
   return request({
-    url: '/api/user/create',
+    url: '/user/create',
     method: 'post',
     data
   })
@@ -38,7 +47,7 @@ export function createUser(data) {
 // 更新用户
 export function updateUser(data) {
   return request({
-    url: '/api/user/update',
+    url: '/user/update',
     method: 'put',
     data
   })
@@ -47,24 +56,32 @@ export function updateUser(data) {
 // 删除用户
 export function deleteUser(id) {
   return request({
-    url: `/api/user/delete/${id}`,
+    url: `/user/delete/${id}`,
     method: 'delete'
   })
 }
 
-// 获取角色列表
-export function getRoleList(params) {
+// 启用/禁用用户
+export function updateUserStatus(userId, status) {
   return request({
-    url: '/api/role/list',
-    method: 'get',
-    params
+    url: `/admin/user/${userId}/status`,
+    method: 'put',
+    params: { status }
+  })
+}
+
+// 获取角色列表
+export function getRoleList() {
+  return request({
+    url: '/role/list',
+    method: 'get'
   })
 }
 
 // 创建角色
 export function createRole(data) {
   return request({
-    url: '/api/role/create',
+    url: '/role/create',
     method: 'post',
     data
   })
@@ -73,7 +90,7 @@ export function createRole(data) {
 // 更新角色
 export function updateRole(data) {
   return request({
-    url: '/api/role/update',
+    url: '/role/update',
     method: 'put',
     data
   })
@@ -82,15 +99,24 @@ export function updateRole(data) {
 // 删除角色
 export function deleteRole(id) {
   return request({
-    url: `/api/role/delete/${id}`,
+    url: `/role/delete/${id}`,
     method: 'delete'
+  })
+}
+
+// 为用户分配角色
+export function assignRoleToUser(userId, roleId) {
+  return request({
+    url: '/role/assign',
+    method: 'post',
+    params: { userId, roleId }
   })
 }
 
 // 获取权限列表
 export function getPermissionList() {
   return request({
-    url: '/api/permission/list',
+    url: '/permission/list',
     method: 'get'
   })
 }
@@ -98,7 +124,43 @@ export function getPermissionList() {
 // 获取权限树
 export function getPermissionTree() {
   return request({
-    url: '/api/permission/tree',
+    url: '/permission/tree',
     method: 'get'
+  })
+}
+
+// 创建权限
+export function createPermission(data) {
+  return request({
+    url: '/permission/create',
+    method: 'post',
+    data
+  })
+}
+
+// 更新权限
+export function updatePermission(data) {
+  return request({
+    url: '/permission/update',
+    method: 'put',
+    data
+  })
+}
+
+// 删除权限
+export function deletePermission(id) {
+  return request({
+    url: `/permission/delete/${id}`,
+    method: 'delete'
+  })
+}
+
+// 给角色分配权限
+export function assignPermissionsToRole(roleId, permissionIds) {
+  return request({
+    url: '/permission/assign',
+    method: 'post',
+    params: { roleId },
+    data: permissionIds
   })
 }

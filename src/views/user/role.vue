@@ -21,13 +21,11 @@
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button size="small" link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button size="small" link type="warning" @click="openPermDialog(row)">权限配置</el-button>
-          <el-button size="small" link type="danger" @click="deleteRole(row)">删除</el-button>
+          <el-button size="small" link type="danger" @click="deleteRoleRow(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 新建/编辑弹窗 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="480px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="角色编码" prop="roleCode">
@@ -48,22 +46,6 @@
         <el-button type="primary" :loading="submitting" @click="submitForm">确定</el-button>
       </template>
     </el-dialog>
-
-    <!-- 权限配置弹窗 -->
-    <el-dialog v-model="permDialogVisible" title="权限配置" width="500px">
-      <el-tree
-        ref="permTreeRef"
-        :data="permTree"
-        show-checkbox
-        node-key="id"
-        :default-checked-keys="checkedPermIds"
-        :props="{ label: 'permissionName', children: 'children' }"
-      />
-      <template #footer>
-        <el-button @click="permDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="savePermissions">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -71,18 +53,14 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import { getRoleList, createRole, updateRole, deleteRole } from '@/api/user'
 
 const loading = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
-const permDialogVisible = ref(false)
 const formRef = ref(null)
-const permTreeRef = ref(null)
 const dialogTitle = ref('新建角色')
 const roleList = ref([])
-const permTree = ref([])
-const checkedPermIds = ref([])
 
 const form = reactive({ id: null, roleCode: '', roleName: '', description: '', sort: 0 })
 
@@ -91,13 +69,14 @@ const rules = {
   roleName: [{ required: true, message: '请输入角色名称', trigger: 'blur' }]
 }
 
-const fetchRoles = () => {
+const fetchRoles = async () => {
   loading.value = true
-  setTimeout(() => {
-    const res = mockData.getMockData('/api/role/list', 'get')
-    roleList.value = res.data.list
+  try {
+    const res = await getRoleList()
+    roleList.value = res.data.list || []
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
 const openDialog = (row = null) => {
@@ -114,44 +93,30 @@ const openDialog = (row = null) => {
 
 const submitForm = async () => {
   if (!formRef.value) return
-  await formRef.value.validate((valid) => {
-    if (valid) {
-      submitting.value = true
-      setTimeout(() => {
-        if (form.id) {
-          const idx = mockData.roles.findIndex(r => r.id === form.id)
-          if (idx !== -1) Object.assign(mockData.roles[idx], form)
-          ElMessage.success('更新成功')
-        } else {
-          mockData.roles.push({ ...form, id: Date.now(), status: 1 })
-          ElMessage.success('创建成功')
-        }
-        submitting.value = false
-        dialogVisible.value = false
-        fetchRoles()
-      }, 400)
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    submitting.value = true
+    try {
+      if (form.id) {
+        await updateRole(form)
+        ElMessage.success('更新成功')
+      } else {
+        await createRole(form)
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      fetchRoles()
+    } finally {
+      submitting.value = false
     }
   })
 }
 
-const deleteRole = async (row) => {
-  await ElMessageBox.confirm(`确定删除角色"${row.roleName}"吗？`, '警告', { type: 'warning' })
-  const idx = mockData.roles.findIndex(r => r.id === row.id)
-  if (idx !== -1) mockData.roles.splice(idx, 1)
+const deleteRoleRow = async (row) => {
+  await ElMessageBox.confirm(`确定删除角色「${row.roleName}」吗？`, '警告', { type: 'warning' })
+  await deleteRole(row.id)
   ElMessage.success('删除成功')
   fetchRoles()
-}
-
-const openPermDialog = (row) => {
-  const res = mockData.getMockData('/api/permission/tree', 'get')
-  permTree.value = mockData.buildTree(res.data)
-  checkedPermIds.value = [1, 2, 3]
-  permDialogVisible.value = true
-}
-
-const savePermissions = () => {
-  ElMessage.success('权限配置已保存')
-  permDialogVisible.value = false
 }
 
 onMounted(fetchRoles)
@@ -180,14 +145,5 @@ onMounted(fetchRoles)
 .data-table {
   background: #ffffff;
   border-radius: 12px;
-}
-
-:deep(.el-tree) {
-  background: transparent;
-  color: #1e293b;
-}
-
-:deep(.el-tree-node__content:hover) {
-  background: rgba(74, 144, 226, 0.1);
 }
 </style>

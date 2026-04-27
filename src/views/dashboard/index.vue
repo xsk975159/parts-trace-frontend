@@ -134,7 +134,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import { Timer, Warning, Box, Grid, Link } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import { getDashboardStats } from '@/api/dashboard'
+import { getEventList } from '@/api/trace'
+import { getAlertList } from '@/api/anomaly'
 
 const store = useStore()
 const userInfo = computed(() => store.state.user.userInfo)
@@ -177,17 +179,29 @@ const quickLinks = [
 const eventTypeLabel = (t) => ({ production: '生产', quality: '质检', logistics: '物流', delivery: '交付' }[t] || t)
 const eventTypeTag = (t) => ({ production: '', quality: 'success', logistics: 'warning', delivery: 'info' }[t] || '')
 
-const loadDashboard = () => {
-  const statsRes = mockData.getMockData('/api/dashboard/stats', 'get')
-  if (statsRes?.data) statsData.value = statsRes.data
-
-  const eventsRes = mockData.getMockData('/api/trace/event/list', 'get')
-  if (eventsRes?.data) recentEvents.value = eventsRes.data.list.slice(0, 5)
-
-  const alertsRes = mockData.getMockData('/api/anomaly/alert/list', 'get')
-  if (alertsRes?.data) {
-    alertItems.value = alertsRes.data.list
-    store.dispatch('anomaly/setUnreadAlerts', alertsRes.data.list.filter(a => a.status === 0).length)
+const loadDashboard = async () => {
+  try {
+    const statsRes = await getDashboardStats()
+    if (statsRes?.data) {
+      statsData.value = { ...statsData.value, ...statsRes.data }
+    }
+  } catch {
+    /* 拦截器已提示 */
+  }
+  try {
+    const eventsRes = await getEventList({ page: 1, pageSize: 10 })
+    const list = eventsRes?.data?.list || []
+    recentEvents.value = Array.isArray(list) ? list.slice(0, 5) : []
+  } catch {
+    recentEvents.value = []
+  }
+  try {
+    const alertsRes = await getAlertList({})
+    const list = alertsRes?.data?.list || []
+    alertItems.value = list
+    store.dispatch('anomaly/setUnreadAlerts', list.filter((a) => a.status === 0).length)
+  } catch {
+    alertItems.value = []
   }
 }
 

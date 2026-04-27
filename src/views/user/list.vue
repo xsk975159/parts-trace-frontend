@@ -99,7 +99,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import { getUserList, createUser, updateUser, deleteUser as deleteUserApi, updateUserStatus } from '@/api/user'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -128,21 +128,22 @@ const rules = {
 const userTypeLabel = (type) => ({ normal: '普通用户', supply_chain: '供应链用户', regulator: '监管机构' }[type] || type)
 const userTypeTag = (type) => ({ normal: '', supply_chain: 'success', regulator: 'warning' }[type] || '')
 
-const fetchUsers = () => {
+const fetchUsers = async () => {
   loading.value = true
-  setTimeout(() => {
-    const res = mockData.getMockData('/api/user/list', 'get')
-    let list = res.data.list
-    if (searchForm.keyword) {
-      const kw = searchForm.keyword.toLowerCase()
-      list = list.filter(u => u.username.includes(kw) || u.realName.includes(kw) || u.email.includes(kw))
-    }
-    if (searchForm.userType) list = list.filter(u => u.userType === searchForm.userType)
-    if (searchForm.status !== '') list = list.filter(u => u.status === searchForm.status)
-    pagination.total = list.length
-    userList.value = list
+  try {
+    const res = await getUserList({
+      page: pagination.page,
+      pageSize: pagination.size,
+      username: searchForm.keyword || undefined,
+      status: searchForm.status === '' ? undefined : searchForm.status,
+      userType: searchForm.userType || undefined
+    })
+    const data = res.data || {}
+    userList.value = data.list || []
+    pagination.total = data.total || 0
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
 const openDialog = (row = null) => {
@@ -160,34 +161,41 @@ const openDialog = (row = null) => {
 const submitForm = async () => {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
-    if (valid) {
-      submitting.value = true
-      setTimeout(() => {
-        if (form.id) {
-          const idx = mockData.users.findIndex(u => u.id === form.id)
-          if (idx !== -1) Object.assign(mockData.users[idx], form)
-          ElMessage.success('更新成功')
-        } else {
-          mockData.users.push({ ...form, id: Date.now(), createTime: new Date().toLocaleString(), status: 1 })
-          ElMessage.success('创建成功')
-        }
-        submitting.value = false
-        dialogVisible.value = false
-        fetchUsers()
-      }, 400)
+    if (!valid) return
+    submitting.value = true
+    try {
+      if (form.id) {
+        await updateUser(form)
+        ElMessage.success('更新成功')
+      } else {
+        await createUser({
+          username: form.username,
+          password: form.password,
+          confirmPassword: form.password,
+          realName: form.realName,
+          email: form.email,
+          phone: form.phone,
+          userType: form.userType
+        })
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      fetchUsers()
+    } finally {
+      submitting.value = false
     }
   })
 }
 
 const deleteUser = async (row) => {
   await ElMessageBox.confirm(`确定删除用户「${row.realName}」吗？`, '警告', { type: 'warning' })
-  const idx = mockData.users.findIndex(u => u.id === row.id)
-  if (idx !== -1) mockData.users.splice(idx, 1)
+  await deleteUserApi(row.id)
   ElMessage.success('删除成功')
   fetchUsers()
 }
 
-const toggleStatus = (row) => {
+const toggleStatus = async (row) => {
+  await updateUserStatus(row.id, row.status)
   ElMessage.success(`已${row.status === 1 ? '启用' : '禁用'}用户「${row.realName}」`)
 }
 

@@ -5,7 +5,7 @@
       <el-button type="primary" :icon="Plus" @click="openDialog()">新增规则</el-button>
     </div>
 
-    <div class="rule-grid">
+    <div class="rule-grid" v-loading="loading">
       <div class="rule-card" v-for="rule in ruleList" :key="rule.id">
         <div class="rule-card-header">
           <div class="rule-info">
@@ -39,8 +39,8 @@
         <el-form-item label="规则类型" prop="ruleType">
           <el-select v-model="form.ruleType" style="width:100%">
             <el-option label="时效规则" value="time" />
-            <el-option label="流程规则" value="process" />
             <el-option label="质量规则" value="quality" />
+            <el-option label="物流规则" value="logistics" />
           </el-select>
         </el-form-item>
         <el-form-item label="规则描述">
@@ -65,7 +65,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import { getRuleList, createRule, updateRule, deleteRule as deleteRuleApi } from '@/api/anomaly'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -75,8 +75,14 @@ const formRef = ref(null)
 const ruleList = ref([])
 
 const form = reactive({
-  id: null, ruleName: '', ruleCode: '', ruleType: 'time',
-  description: '', condition: '', action: ''
+  id: null,
+  ruleName: '',
+  ruleCode: '',
+  ruleType: 'time',
+  description: '',
+  condition: '',
+  action: '',
+  status: 1
 })
 
 const formRules = {
@@ -85,16 +91,20 @@ const formRules = {
   ruleType: [{ required: true, message: '请选择规则类型', trigger: 'change' }]
 }
 
-const ruleTypeLabel = (t) => ({ time: '时效规则', process: '流程规则', quality: '质量规则' }[t] || t)
-const ruleTypeTag = (t) => ({ time: 'warning', process: '', quality: 'success' }[t] || '')
+const ruleTypeLabel = (t) => ({ time: '时效规则', quality: '质量规则', logistics: '物流规则', process: '流程规则' }[t] || t)
+const ruleTypeTag = (t) => ({ time: 'warning', process: '', quality: 'success', logistics: 'info' }[t] || '')
 
-const fetchRules = () => {
+const fetchRules = async () => {
   loading.value = true
-  setTimeout(() => {
-    const res = mockData.getMockData('/api/anomaly/rule/list', 'get')
-    ruleList.value = res.data.list
+  try {
+    const res = await getRuleList({})
+    const data = res.data || {}
+    ruleList.value = data.list || []
+  } catch {
+    ruleList.value = []
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
 const openDialog = (row = null) => {
@@ -104,43 +114,79 @@ const openDialog = (row = null) => {
     Object.assign(form, row)
   } else {
     dialogTitle.value = '新增规则'
-    Object.assign(form, { id: null, ruleName: '', ruleCode: '', ruleType: 'time', description: '', condition: '', action: '' })
+    Object.assign(form, {
+      id: null,
+      ruleName: '',
+      ruleCode: '',
+      ruleType: 'time',
+      description: '',
+      condition: '',
+      action: '',
+      status: 1
+    })
   }
   dialogVisible.value = true
 }
 
 const submitForm = async () => {
   if (!formRef.value) return
-  await formRef.value.validate((valid) => {
-    if (valid) {
-      submitting.value = true
-      setTimeout(() => {
-        if (form.id) {
-          const idx = mockData.rules.findIndex(r => r.id === form.id)
-          if (idx !== -1) Object.assign(mockData.rules[idx], form)
-          ElMessage.success('更新成功')
-        } else {
-          mockData.rules.push({ ...form, id: Date.now(), status: 1, createTime: new Date().toLocaleString() })
-          ElMessage.success('创建成功')
-        }
-        submitting.value = false
-        dialogVisible.value = false
-        fetchRules()
-      }, 400)
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    submitting.value = true
+    try {
+      if (form.id) {
+        await updateRule({
+          id: form.id,
+          ruleName: form.ruleName,
+          ruleCode: form.ruleCode,
+          ruleType: form.ruleType,
+          description: form.description,
+          condition: form.condition,
+          action: form.action,
+          status: form.status ?? 1
+        })
+        ElMessage.success('更新成功')
+      } else {
+        await createRule({
+          ruleName: form.ruleName,
+          ruleCode: form.ruleCode,
+          ruleType: form.ruleType,
+          description: form.description,
+          condition: form.condition,
+          action: form.action,
+          status: 1
+        })
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      await fetchRules()
+    } finally {
+      submitting.value = false
     }
   })
 }
 
 const deleteRule = async (row) => {
   await ElMessageBox.confirm(`确定删除规则「${row.ruleName}」吗？`, '警告', { type: 'warning' })
-  const idx = mockData.rules.findIndex(r => r.id === row.id)
-  if (idx !== -1) mockData.rules.splice(idx, 1)
-  ElMessage.success('删除成功')
-  fetchRules()
+  try {
+    await deleteRuleApi(row.id)
+    ElMessage.success('删除成功')
+    await fetchRules()
+  } catch {
+    /* 错误已由拦截器提示 */
+  }
 }
 
-const toggleRule = (row) => {
-  ElMessage.success(`规则「${row.ruleName}」已${row.status === 1 ? '启用' : '禁用'}`)
+const toggleRule = async (row) => {
+  const next = row.status
+  const prev = next === 1 ? 0 : 1
+  try {
+    await updateRule({ ...row })
+    ElMessage.success(`规则「${row.ruleName}」已${next === 1 ? '启用' : '禁用'}`)
+    await fetchRules()
+  } catch {
+    row.status = prev
+  }
 }
 
 onMounted(fetchRules)

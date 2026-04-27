@@ -5,35 +5,43 @@
     </div>
 
     <div class="search-bar">
-      <el-input v-model="searchForm.keyword" placeholder="搜索零部件编码/凭证名称" clearable style="width:260px"
-        @clear="fetchCerts" @keyup.enter="fetchCerts">
+      <el-input
+        v-model="searchForm.keyword"
+        placeholder="搜索零部件编码/签发方"
+        clearable
+        style="width: 260px"
+        @clear="fetchCerts"
+        @keyup.enter="fetchCerts"
+      >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="searchForm.certType" placeholder="凭证类型" clearable style="width:140px" @change="fetchCerts">
+      <el-select v-model="searchForm.certType" placeholder="凭证类型" clearable style="width: 140px" @change="fetchCerts">
         <el-option label="生产证明" value="production" />
         <el-option label="质检报告" value="quality" />
-        <el-option label="流转证明" value="logistics" />
+        <el-option label="流转证明" value="transfer" />
+        <el-option label="综合凭证" value="comprehensive" />
       </el-select>
       <el-button type="primary" :icon="Search" @click="fetchCerts">搜索</el-button>
     </div>
 
-    <div class="cert-grid">
+    <div class="cert-grid" v-loading="loading">
       <div class="cert-card" v-for="cert in certList" :key="cert.id" @click="viewDetail(cert)">
-        <div class="cert-header"  :class="cert.certificateType">
+        <div class="cert-header" :class="cert.vcType">
           <el-icon :size="32"><Tickets /></el-icon>
-          <span class="cert-type-label">{{ certTypeLabel(cert.certificateType) }}</span>
+          <span class="cert-type-label">{{ certTypeLabel(cert.vcType) }}</span>
           <div class="cert-verified" v-if="cert.verified">
-            <el-icon><SuccessFilled /></el-icon> 已验证
+            <el-icon><SuccessFilled /></el-icon>
+            已验证
           </div>
         </div>
         <div class="cert-body">
           <div class="cert-name">{{ cert.certificateName }}</div>
-          <div class="cert-parts">零部件：{{ cert.partsCode }}</div>
-          <div class="cert-issuer">签发方：{{ cert.issuer }}</div>
-          <div class="cert-time">签发时间：{{ cert.issueTime }}</div>
+          <div class="cert-parts">零部件：{{ cert.partsCode || '-' }}</div>
+          <div class="cert-issuer">签发方：{{ cert.issuerName || '-' }}</div>
+          <div class="cert-time">签发时间：{{ cert.issuanceDate || '-' }}</div>
           <div class="cert-hash">
-            <span>Hash: </span>
-            <code>{{ cert.certificateHash }}</code>
+            <span>VC ID: </span>
+            <code>{{ cert.vcId }}</code>
           </div>
         </div>
         <div class="cert-footer">
@@ -43,25 +51,25 @@
       </div>
     </div>
 
-    <el-empty v-if="certList.length === 0" description="暂无凭证数据" />
+    <el-empty v-if="!loading && certList.length === 0" description="暂无凭证数据" />
 
-    <!-- 详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="凭证详情" width="600px">
+    <el-dialog v-model="detailVisible" title="凭证详情" width="700px">
       <div v-if="currentCert" class="cert-detail">
-        <div class="detail-badge" :class="currentCert.certificateType">
-          {{ certTypeLabel(currentCert.certificateType) }}
-        </div>
+        <div class="detail-badge" :class="currentCert.vcType">{{ certTypeLabel(currentCert.vcType) }}</div>
         <h3 class="detail-title">{{ currentCert.certificateName }}</h3>
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="零部件编码">{{ currentCert.partsCode }}</el-descriptions-item>
-          <el-descriptions-item label="签发方">{{ currentCert.issuer }}</el-descriptions-item>
-          <el-descriptions-item label="签发时间" :span="2">{{ currentCert.issueTime }}</el-descriptions-item>
-          <el-descriptions-item label="凭证内容" :span="2">{{ currentCert.content }}</el-descriptions-item>
-          <el-descriptions-item label="凭证Hash" :span="2">
-            <code class="hash-code">{{ currentCert.certificateHash }}</code>
+          <el-descriptions-item label="零部件编码">{{ currentCert.partsCode || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="签发方">{{ currentCert.issuerName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="签发时间" :span="2">{{ currentCert.issuanceDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="过期时间" :span="2">{{ currentCert.expirationDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="凭证ID" :span="2">
+            <code class="hash-code">{{ currentCert.vcId }}</code>
           </el-descriptions-item>
-          <el-descriptions-item label="区块Hash" :span="2">
-            <code class="hash-code">{{ currentCert.blockHash }}</code>
+          <el-descriptions-item label="凭证数据" :span="2">
+            <code class="hash-code">{{ currentCert.credentialData || '-' }}</code>
+          </el-descriptions-item>
+          <el-descriptions-item label="证明信息" :span="2">
+            <code class="hash-code">{{ currentCert.proof || '-' }}</code>
           </el-descriptions-item>
           <el-descriptions-item label="验证状态" :span="2">
             <el-tag :type="currentCert.verified ? 'success' : 'warning'">
@@ -79,49 +87,102 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Tickets, SuccessFilled } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import { getCertificateDetail, getCertificateList, verifyCertificate } from '@/api/trace'
+import { getPartsList } from '@/api/parts'
 
 const loading = ref(false)
 const detailVisible = ref(false)
 const certList = ref([])
 const currentCert = ref(null)
+const partsCodeMap = ref({})
 
 const searchForm = reactive({ keyword: '', certType: '' })
 
-const certTypeLabel = (t) => ({ production: '生产证明', quality: '质检报告', logistics: '流转证明' }[t] || t)
+const certTypeLabel = (t) => ({
+  production: '生产证明',
+  quality: '质检报告',
+  transfer: '流转证明',
+  comprehensive: '综合凭证'
+}[t] || t)
 
-const fetchCerts = () => {
-  loading.value = true
-  setTimeout(() => {
-    const res = mockData.getMockData('/api/trace/certificate/list', 'get')
-    let list = res.data.list
-    if (searchForm.keyword) {
-      const kw = searchForm.keyword.toLowerCase()
-      list = list.filter(c => c.partsCode.includes(kw) || c.certificateName.includes(kw))
-    }
-    if (searchForm.certType) list = list.filter(c => c.certificateType === searchForm.certType)
-    certList.value = list
-    loading.value = false
-  }, 300)
+const normalizeCert = (c) => {
+  const normalizedType = (c.vcType || c.vc_type || '').toLowerCase()
+  const normalizedStatus = c.vcStatus ?? c.vc_status ?? c.status
+  return {
+    ...c,
+    vcType: normalizedType,
+    issuerName: c.issuerName || c.issuer_name || '',
+    issuanceDate: c.issuanceDate || c.issuance_date || '',
+    expirationDate: c.expirationDate || c.expiration_date || '',
+    credentialData: c.credentialData || c.credential_data || '',
+    partsCode: partsCodeMap.value[c.partsId] || '',
+    certificateName: certTypeLabel(normalizedType),
+    verified: Number(normalizedStatus) === 1
+  }
 }
 
-const viewDetail = (cert) => {
-  currentCert.value = cert
+const fetchPartsMap = async () => {
+  const res = await getPartsList({ page: 1, pageSize: 1000 })
+  const pageData = res.data || {}
+  const list = pageData.records || pageData.list || []
+  const map = {}
+  list.forEach((p) => {
+    map[p.id] = p.partsCode
+  })
+  partsCodeMap.value = map
+}
+
+const fetchCerts = async () => {
+  loading.value = true
+  try {
+    const res = await getCertificateList({ page: 1, pageSize: 1000 })
+    let list = (res.data?.list || []).map(normalizeCert)
+
+    if (searchForm.keyword) {
+      const kw = searchForm.keyword.trim().toLowerCase()
+      list = list.filter((c) =>
+        (c.partsCode || '').toLowerCase().includes(kw) ||
+        (c.issuerName || '').toLowerCase().includes(kw)
+      )
+    }
+
+    if (searchForm.certType) {
+      list = list.filter((c) => c.vcType === searchForm.certType)
+    }
+
+    certList.value = list
+  } finally {
+    loading.value = false
+  }
+}
+
+const viewDetail = async (cert) => {
+  const res = await getCertificateDetail(cert.id)
+  currentCert.value = normalizeCert(res.data || cert)
   detailVisible.value = true
 }
 
-const verifyCert = (cert) => {
+const verifyCert = async (cert) => {
+  const res = await verifyCertificate(cert.id)
+  const ok = !!res.data?.verified
   ElMessage({
-    message: `凭证 ${cert.certificateName} 验证通过，区块链数据完整性确认`,
-    type: 'success',
-    duration: 3000
+    message: ok ? `凭证 ${cert.vcId} 验证通过` : `凭证 ${cert.vcId} 验证未通过`,
+    type: ok ? 'success' : 'warning',
+    duration: 2500
   })
+
+  if (currentCert.value && currentCert.value.id === cert.id) {
+    currentCert.value.verified = ok
+  }
 }
 
-onMounted(fetchCerts)
+onMounted(async () => {
+  await fetchPartsMap()
+  await fetchCerts()
+})
 </script>
 
 <style scoped>
@@ -156,14 +217,19 @@ onMounted(fetchCerts)
 }
 .cert-header.production { background: #667eea; }
 .cert-header.quality { background: #16a34a; }
-.cert-header.logistics { background: #d97706; }
+.cert-header.transfer { background: #d97706; }
+.cert-header.comprehensive { background: #0891b2; }
 
 .cert-type-label { font-size: 16px; font-weight: 700; flex: 1; }
 
 .cert-verified {
-  display: flex; align-items: center; gap: 4px;
-  font-size: 12px; background: rgba(255,255,255,.2);
-  padding: 4px 10px; border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  background: rgba(255,255,255,.2);
+  padding: 4px 10px;
+  border-radius: 12px;
 }
 
 .cert-body { padding: 16px 20px; }
@@ -175,17 +241,25 @@ onMounted(fetchCerts)
 .cert-footer {
   padding: 10px 20px;
   border-top: 1px solid #e2e8f0;
-  display: flex; gap: 8px;
+  display: flex;
+  gap: 8px;
 }
 
 .cert-detail { padding: 4px; }
 .detail-badge {
-  display: inline-block; padding: 4px 14px; border-radius: 20px;
-  font-size: 13px; font-weight: 600; margin-bottom: 12px; color: white;
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: white;
 }
 .detail-badge.production { background: #667eea; }
 .detail-badge.quality { background: #16a34a; }
-.detail-badge.logistics { background: #d97706; }
+.detail-badge.transfer { background: #d97706; }
+.detail-badge.comprehensive { background: #0891b2; }
+
 .detail-title { font-size: 20px; font-weight: 700; color: #1e293b; margin: 0 0 20px; }
 .hash-code { font-family: monospace; font-size: 12px; word-break: break-all; color: #3b82f6; }
 :deep(.el-descriptions__label) { background: #f1f5f9; color: #475569; }

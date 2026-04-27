@@ -8,15 +8,25 @@
     <div class="query-bar">
       <el-input
         v-model="queryCode"
-        placeholder="请输入零部件编码，如：P20240001"
+        placeholder="请输入零部件编码，如：PT-ENG-001"
         size="large"
         clearable
-        style="max-width:500px;flex:1"
+        style="max-width: 500px; flex: 1"
         @keyup.enter="doQuery"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <el-button type="primary" size="large" :loading="loading" @click="doQuery">开始追溯</el-button>
+      <el-input
+        v-model="queryDid"
+        placeholder="可选：输入 DID 直接查链条"
+        size="large"
+        clearable
+        style="max-width: 500px; flex: 1"
+      />
+      <el-button size="large" @click="doQueryByDid">DID查询</el-button>
+      <el-button size="large" type="success" plain @click="downloadReport('csv')">下载CSV报告</el-button>
+      <el-button size="large" type="info" plain @click="downloadReport('json')">查看JSON报告</el-button>
       <div class="quick-links">
         <span class="quick-label">快速查询：</span>
         <el-tag v-for="code in quickCodes" :key="code" class="quick-tag" @click="quickQuery(code)">{{ code }}</el-tag>
@@ -25,7 +35,7 @@
 
     <div v-if="loading" class="loading-area">
       <el-icon class="loading-icon" :size="48"><Loading /></el-icon>
-      <p>正在从区块链检索数据...</p>
+      <p>正在从后端检索溯源数据...</p>
     </div>
 
     <div v-else-if="result" class="result-container fade-in">
@@ -46,56 +56,57 @@
             <span class="meta-value">{{ m.value }}</span>
           </div>
         </div>
+        <div class="did-summary">
+          <span class="did-label">零件DID</span>
+          <code class="did-code">{{ result.didInfo?.did || '-' }}</code>
+          <el-button size="small" @click="showDidDetail" :disabled="!result.didInfo">查看DID详情</el-button>
+        </div>
       </div>
 
       <div class="content-grid">
         <div class="timeline-card">
           <div class="section-title">
-            <el-icon><Connection /></el-icon> 溯源链条
+            <el-icon><Connection /></el-icon>
+            溯源链条
             <span class="section-count">{{ result.events.length }} 个事件</span>
           </div>
-          <el-timeline>
-            <el-timeline-item
-              v-for="event in result.events"
-              :key="event.id"
-              :type="eventTimelineType(event.eventType)"
-              :timestamp="event.eventTime"
-              placement="top"
-            >
-              <div class="timeline-content">
-                <div class="timeline-header">
-                  <el-tag :type="eventTypeTag(event.eventType)" size="small">{{ eventTypeLabel(event.eventType) }}</el-tag>
-                  <span class="timeline-event-name">{{ event.eventName }}</span>
-                </div>
-                <div class="timeline-body">
-                  <div><span class="tl-label">操作人：</span>{{ event.operatorName }}</div>
-                  <div><span class="tl-label">地点：</span>{{ event.location }}</div>
-                  <div><span class="tl-label">描述：</span>{{ event.description }}</div>
-                </div>
-                <div class="timeline-chain">
-                  <el-icon><Link /></el-icon>
-                  <code>{{ event.txHash }}</code>
-                </div>
-              </div>
-            </el-timeline-item>
-          </el-timeline>
+          <el-table :data="result.events" size="small" border>
+            <el-table-column prop="eventType" label="类型" width="100">
+              <template #default="{ row }">
+                <el-tag :type="eventTypeTag(row.eventType)" size="small">{{ eventTypeLabel(row.eventType) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="eventName" label="事件名称" min-width="170" />
+            <el-table-column prop="eventTime" label="时间" width="180" />
+            <el-table-column prop="operatorName" label="操作人" width="110" />
+            <el-table-column prop="txHash" label="链上Tx" min-width="220" show-overflow-tooltip />
+            <el-table-column label="操作" width="90">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="showEventDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
 
         <div class="certs-card">
           <div class="section-title">
-            <el-icon><Tickets /></el-icon> 数字凭证
+            <el-icon><Tickets /></el-icon>
+            数字凭证
             <span class="section-count">{{ result.certificates.length }} 份</span>
           </div>
           <div class="mini-cert" v-for="cert in result.certificates" :key="cert.id">
-            <div class="mini-cert-header" :class="cert.certificateType">
-              <span>{{ certTypeLabel(cert.certificateType) }}</span>
+            <div class="mini-cert-header" :class="cert.vcType">
+              <span>{{ certTypeLabel(cert.vcType) }}</span>
               <el-icon v-if="cert.verified"><SuccessFilled /></el-icon>
             </div>
             <div class="mini-cert-body">
-              <div class="mini-cert-name">{{ cert.certificateName }}</div>
-              <div class="mini-cert-info">签发方：{{ cert.issuer }}</div>
-              <div class="mini-cert-info">{{ cert.issueTime }}</div>
-              <code class="mini-cert-hash">{{ cert.certificateHash }}</code>
+              <div class="mini-cert-name">{{ certTypeLabel(cert.vcType) }}</div>
+              <div class="mini-cert-info">签发方：{{ cert.issuerName || '-' }}</div>
+              <div class="mini-cert-info">{{ cert.issuanceDate || '-' }}</div>
+              <code class="mini-cert-hash">{{ cert.vcId }}</code>
+              <div style="margin-top:6px">
+                <el-button link type="primary" size="small" @click="showCertDetail(cert)">查看详情</el-button>
+              </div>
             </div>
           </div>
 
@@ -106,7 +117,7 @@
             <div class="chain-row"><span>数据完整性</span><strong class="ok">验证通过</strong></div>
             <div class="chain-row">
               <span>最新区块</span>
-              <code>{{ result.events[result.events.length - 1]?.blockHash }}</code>
+              <code>{{ result.events[0]?.txHash || '-' }}</code>
             </div>
           </div>
         </div>
@@ -121,51 +132,166 @@
       <el-icon :size="80" color="#cbd5e1"><Search /></el-icon>
       <p>请输入零部件编码进行追溯查询</p>
     </div>
+
+    <el-dialog v-model="didDetailVisible" title="DID详情" width="760px">
+      <pre class="dialog-pre">{{ JSON.stringify(result?.didInfo || {}, null, 2) }}</pre>
+    </el-dialog>
+    <el-dialog v-model="eventDetailVisible" title="事件详情" width="760px">
+      <pre class="dialog-pre">{{ JSON.stringify(currentEvent || {}, null, 2) }}</pre>
+    </el-dialog>
+    <el-dialog v-model="certDetailVisible" title="VC详情" width="760px">
+      <pre class="dialog-pre">{{ JSON.stringify(currentCert || {}, null, 2) }}</pre>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Connection, Tickets, Link, SuccessFilled, Loading } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
+import { exportTraceReport, getCertificateDetail, queryTraceChain, queryTraceChainByDid } from '@/api/trace'
 
 const queryCode = ref('')
 const loading = ref(false)
 const searched = ref(false)
 const result = ref(null)
-const quickCodes = ['P20240001', 'P20240002', 'P20240003']
-
-const partsMeta = computed(() => {
-  if (!result.value) return []
-  const p = result.value.parts
-  return [
-    { label: '生产厂商', value: p.manufacturer },
-    { label: '规格型号', value: p.specification },
-    { label: '生产日期', value: p.productionDate },
-    { label: '质量标准', value: p.qualityStandard }
-  ]
-})
+const queryDid = ref('')
+const quickCodes = ['PT-ENG-001', 'PT-ENG-002', 'PT-CHN-001']
+const didDetailVisible = ref(false)
+const eventDetailVisible = ref(false)
+const certDetailVisible = ref(false)
+const currentEvent = ref(null)
+const currentCert = ref(null)
 
 const eventTypeLabel = (t) => ({ production: '生产', quality: '质检', logistics: '物流', delivery: '交付' }[t] || t)
 const eventTypeTag = (t) => ({ production: '', quality: 'success', logistics: 'warning', delivery: 'info' }[t] || '')
 const eventTimelineType = (t) => ({ production: 'primary', quality: 'success', logistics: 'warning', delivery: 'info' }[t] || 'primary')
-const certTypeLabel = (t) => ({ production: '生产证明', quality: '质检报告', logistics: '流转证明' }[t] || t)
+const certTypeLabel = (t) => ({ production: '生产证明', quality: '质检报告', transfer: '流转证明', comprehensive: '综合凭证' }[t] || t)
 
-const doQuery = () => {
+const normalizeEvent = (e) => ({
+  id: e.id,
+  eventType: e.eventType || e.event_type || '',
+  eventName: e.eventName || e.event_name || '',
+  operatorName: e.operatorName || e.operator_name || '',
+  location: e.eventLocation || e.event_location || '',
+  description: e.remark || '',
+  eventTime: e.eventTime || e.event_time || '',
+  txHash: e.blockchainTxId || e.blockchain_tx_id || ''
+})
+
+const normalizeCert = (c) => ({
+  id: c.id,
+  vcId: c.vcId || c.vc_id || '',
+  vcType: c.vcType || c.vc_type || '',
+  issuerName: c.issuerName || c.issuer_name || '',
+  issuanceDate: c.issuanceDate || c.issuance_date || '',
+  verified: c.status === 1
+})
+
+const partsMeta = computed(() => {
+  if (!result.value?.parts) return []
+  const p = result.value.parts
+  return [
+    { label: '生产厂商', value: p.manufacturer || '-' },
+    { label: '规格型号', value: p.specification || '-' },
+    { label: '生产日期', value: p.productionDate || '-' },
+    { label: '质量标准', value: p.qualityStandard || '-' }
+  ]
+})
+
+const doQuery = async () => {
   const code = queryCode.value.trim()
-  if (!code) { ElMessage.warning('请输入零部件编码'); return }
+  if (!code) {
+    ElMessage.warning('请输入零部件编码')
+    return
+  }
+
   loading.value = true
   searched.value = true
   result.value = null
-  setTimeout(() => {
-    const res = mockData.getMockData(`/api/trace/query/${code}`, 'get')
-    result.value = (res.code === 200 && res.data.parts) ? res.data : null
+
+  try {
+    const res = await queryTraceChain(code)
+    const data = res.data || {}
+
+    if (!data.parts) {
+      result.value = null
+      return
+    }
+
+    result.value = {
+      parts: data.parts,
+      didInfo: null,
+      events: (data.events || []).map(normalizeEvent),
+      certificates: (data.certificates || []).map(normalizeCert)
+    }
+    const didFromEvent = (data.events || []).map((e) => e.partsDid).find(Boolean)
+    const didFromCert = (data.certificates || []).map((c) => c.holderDid || c.subjectDid).find(Boolean)
+    if (didFromEvent || didFromCert) {
+      result.value.didInfo = { did: didFromEvent || didFromCert }
+    }
+  } finally {
     loading.value = false
-  }, 900)
+  }
 }
 
-const quickQuery = (code) => { queryCode.value = code; doQuery() }
+const quickQuery = (code) => {
+  queryCode.value = code
+  doQuery()
+}
+
+const doQueryByDid = async () => {
+  const did = queryDid.value.trim()
+  if (!did) {
+    ElMessage.warning('请输入DID')
+    return
+  }
+  loading.value = true
+  searched.value = true
+  result.value = null
+  try {
+    const res = await queryTraceChainByDid(did)
+    const data = res.data || {}
+    result.value = {
+      parts: data.partsInfo || {},
+      didInfo: data.didInfo || null,
+      events: (data.events || []).map(normalizeEvent),
+      certificates: (data.credentials || []).map(normalizeCert)
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const downloadReport = async (format) => {
+  const did = queryDid.value.trim()
+  if (!did) {
+    ElMessage.warning('请先输入DID')
+    return
+  }
+  if (format === 'csv') {
+    window.open(`/api/trace/report?did=${encodeURIComponent(did)}&format=csv`, '_blank')
+    return
+  }
+  const res = await exportTraceReport(did, 'json')
+  ElMessage.success('JSON报告已返回，可在网络响应中查看')
+  console.log('trace-report-json', res.data)
+}
+
+const showDidDetail = () => {
+  didDetailVisible.value = true
+}
+
+const showEventDetail = (event) => {
+  currentEvent.value = event
+  eventDetailVisible.value = true
+}
+
+const showCertDetail = async (cert) => {
+  const res = await getCertificateDetail(cert.id)
+  currentCert.value = res.data || cert
+  certDetailVisible.value = true
+}
 </script>
 
 <style scoped>
@@ -182,31 +308,22 @@ const quickQuery = (code) => { queryCode.value = code; doQuery() }
 .loading-icon { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-.parts-info-card {
-  background: #2563eb;
-  border-radius: 16px; padding: 28px;
-  border: 1px solid rgba(74,144,226,.3);
-}
+.parts-info-card { background: #2563eb; border-radius: 16px; padding: 28px; border: 1px solid rgba(74,144,226,.3); }
 .parts-info-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .parts-code { font-size: 13px; color: rgba(255,255,255,.65); font-family: monospace; margin-bottom: 6px; }
 .parts-name { font-size: 26px; font-weight: 700; color: white; }
 .parts-badges { display: flex; gap: 10px; flex-wrap: wrap; }
 .parts-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.did-summary { margin-top: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.did-label { color: rgba(255,255,255,.75); font-size: 13px; }
+.did-code { color: #fff; background: rgba(255,255,255,.12); padding: 3px 8px; border-radius: 6px; font-size: 12px; }
 .meta-item { display: flex; flex-direction: column; gap: 4px; }
 .meta-label { font-size: 12px; color: rgba(255,255,255,.6); }
 .meta-value { font-size: 14px; color: white; font-weight: 500; }
 
 .content-grid { display: grid; grid-template-columns: 1fr 360px; gap: 20px; }
-
-.timeline-card, .certs-card {
-  background: #ffffff; border-radius: 16px;
-  padding: 24px; border: 1px solid #e2e8f0;
-}
-.section-title {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 16px; font-weight: 600; color: #1e293b;
-  margin-bottom: 24px;
-}
+.timeline-card, .certs-card { background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #e2e8f0; }
+.section-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 24px; }
 .section-count { margin-left: auto; font-size: 12px; color: #94a3b8; background: #f1f5f9; padding: 2px 10px; border-radius: 10px; }
 
 .timeline-content { background: #f1f5f9; border-radius: 10px; padding: 14px; }
@@ -221,7 +338,8 @@ const quickQuery = (code) => { queryCode.value = code; doQuery() }
 .mini-cert-header { padding: 8px 14px; color: white; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
 .mini-cert-header.production { background: #667eea; }
 .mini-cert-header.quality { background: #16a34a; }
-.mini-cert-header.logistics { background: #d97706; }
+.mini-cert-header.transfer { background: #d97706; }
+.mini-cert-header.comprehensive { background: #0891b2; }
 .mini-cert-body { padding: 12px 14px; background: #f1f5f9; }
 .mini-cert-name { font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px; }
 .mini-cert-info { font-size: 12px; color: #475569; margin-bottom: 2px; }
@@ -237,6 +355,7 @@ const quickQuery = (code) => { queryCode.value = code; doQuery() }
 
 .empty-hint { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 100px 0; color: #94a3b8; font-size: 15px; }
 .no-result { padding: 60px 0; }
+.dialog-pre { margin: 0; max-height: 460px; overflow: auto; background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 12px; font-size: 12px; }
 
 :deep(.el-timeline-item__timestamp) { color: #94a3b8; }
 :deep(.el-timeline-item__tail) { border-color: #e2e8f0; }

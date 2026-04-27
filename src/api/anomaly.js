@@ -3,7 +3,7 @@ import request from '@/utils/request'
 // 获取规则列表
 export function getRuleList(params) {
   return request({
-    url: '/api/anomaly/rule/list',
+    url: '/anomaly/rule/list',
     method: 'get',
     params
   })
@@ -12,7 +12,7 @@ export function getRuleList(params) {
 // 创建规则
 export function createRule(data) {
   return request({
-    url: '/api/anomaly/rule/create',
+    url: '/anomaly/rule/create',
     method: 'post',
     data
   })
@@ -21,7 +21,7 @@ export function createRule(data) {
 // 更新规则
 export function updateRule(data) {
   return request({
-    url: '/api/anomaly/rule/update',
+    url: '/anomaly/rule/update',
     method: 'put',
     data
   })
@@ -30,7 +30,7 @@ export function updateRule(data) {
 // 删除规则
 export function deleteRule(id) {
   return request({
-    url: `/api/anomaly/rule/delete/${id}`,
+    url: `/anomaly/rule/delete/${id}`,
     method: 'delete'
   })
 }
@@ -38,7 +38,7 @@ export function deleteRule(id) {
 // 获取预警列表
 export function getAlertList(params) {
   return request({
-    url: '/api/anomaly/alert/list',
+    url: '/anomaly/alert/list',
     method: 'get',
     params
   })
@@ -47,7 +47,7 @@ export function getAlertList(params) {
 // 处理预警
 export function handleAlert(data) {
   return request({
-    url: '/api/anomaly/alert/handle',
+    url: '/anomaly/alert/handle',
     method: 'post',
     data
   })
@@ -56,7 +56,7 @@ export function handleAlert(data) {
 // 获取统计数据
 export function getAnomalyStats() {
   return request({
-    url: '/api/anomaly/stats',
+    url: '/anomaly/stats',
     method: 'get'
   })
 }

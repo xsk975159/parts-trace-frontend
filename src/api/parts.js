@@ -3,7 +3,7 @@ import request from '@/utils/request'
 // 获取零部件分类列表
 export function getCategoryList(params) {
   return request({
-    url: '/api/parts/category/list',
+    url: '/parts/category/list',
     method: 'get',
     params
   })
@@ -12,7 +12,7 @@ export function getCategoryList(params) {
 // 获取分类树
 export function getCategoryTree() {
   return request({
-    url: '/api/parts/category/tree',
+    url: '/parts/category/tree',
     method: 'get'
   })
 }
@@ -20,7 +20,7 @@ export function getCategoryTree() {
 // 创建分类
 export function createCategory(data) {
   return request({
-    url: '/api/parts/category/create',
+    url: '/parts/category/create',
     method: 'post',
     data
   })
@@ -29,7 +29,7 @@ export function createCategory(data) {
 // 更新分类
 export function updateCategory(data) {
   return request({
-    url: '/api/parts/category/update',
+    url: '/parts/category/update',
     method: 'put',
     data
   })
@@ -38,7 +38,7 @@ export function updateCategory(data) {
 // 删除分类
 export function deleteCategory(id) {
   return request({
-    url: `/api/parts/category/delete/${id}`,
+    url: `/parts/category/delete/${id}`,
     method: 'delete'
   })
 }
@@ -46,7 +46,7 @@ export function deleteCategory(id) {
 // 获取零部件列表
 export function getPartsList(params) {
   return request({
-    url: '/api/parts/list',
+    url: '/parts/list',
     method: 'get',
     params
   })
@@ -55,7 +55,7 @@ export function getPartsList(params) {
 // 获取零部件详情
 export function getPartsDetail(id) {
   return request({
-    url: `/api/parts/detail/${id}`,
+    url: `/parts/detail/${id}`,
     method: 'get'
   })
 }
@@ -63,7 +63,7 @@ export function getPartsDetail(id) {
 // 创建零部件
 export function createParts(data) {
   return request({
-    url: '/api/parts/create',
+    url: '/parts/create',
     method: 'post',
     data
   })
@@ -72,7 +72,7 @@ export function createParts(data) {
 // 更新零部件
 export function updateParts(data) {
   return request({
-    url: '/api/parts/update',
+    url: '/parts/update',
     method: 'put',
     data
   })
@@ -81,7 +81,16 @@ export function updateParts(data) {
 // 删除零部件
 export function deleteParts(id) {
   return request({
-    url: `/api/parts/delete/${id}`,
+    url: `/parts/delete/${id}`,
     method: 'delete'
+  })
+}
+
+// 按批次查询单件
+export function getPartsUnitsByBatch(batchNumber) {
+  return request({
+    url: '/parts/units/by-batch',
+    method: 'get',
+    params: { batchNumber }
   })
 }
