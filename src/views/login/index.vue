@@ -14,7 +14,7 @@
         <div class="logo-section">
           <el-icon :size="48" color="#4a90e2"><Box /></el-icon>
         </div>
-        <h1 class="title">工业零部件溯源系统</h1>
+        <h1 class="title">机器人零部件溯源系统</h1>
         <p class="subtitle">基于区块链的可信溯源与监管平台</p>
       </div>
 
@@ -54,7 +54,7 @@
         </el-form-item>
       </el-form>
 
-      <div class="demo-accounts">
+      <!-- <div class="demo-accounts">
         <p class="demo-title">测试账号</p>
         <div class="demo-list">
           <div class="demo-item" @click="fillAccount('admin', 'admin123')">
@@ -70,7 +70,7 @@
             <span>logistics1 / 123456</span>
           </div>
         </div>
-      </div>
+      </div> -->
     </div>
   </div>
 </template>

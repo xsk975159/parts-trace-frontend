@@ -7,7 +7,7 @@
         <el-button type="primary" @click="handleGenerateDid">生成DID</el-button>
       </div>
     </div>
-    <div class="tip-text">说明：这里默认只展示单件DID。按零部件ID生成时，会对该批次下所有单件逐个生成。</div>
+    <div class="tip-text">说明：默认展示单件 DID。可查看文档、跳转追溯链条、校验 DID 有效性，或对异常单件执行冻结/解冻。</div>
 
     <div class="search-bar">
       <el-input v-model="query.partsId" placeholder="零部件ID" clearable style="width: 140px" />
@@ -31,10 +31,10 @@
       <el-table-column prop="batchNumber" label="批次号" width="140" />
       <el-table-column prop="did" label="DID" min-width="260" show-overflow-tooltip />
       <el-table-column prop="docCid" label="文档CID" width="180" show-overflow-tooltip />
-      <el-table-column prop="bindStatus" label="绑定" width="80">
+      <el-table-column label="链上锚定" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.bindStatus === 1 ? 'success' : 'info'" size="small">
-            {{ row.bindStatus === 1 ? '已绑定' : '未绑定' }}
+          <el-tag :type="row.chainTxId ? 'success' : 'info'" size="small">
+            {{ row.chainTxId ? '已锚定' : '未锚定' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -43,39 +43,29 @@
           <el-tag :type="statusTag(row.didStatus)" size="small">{{ statusText(row.didStatus) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="360" fixed="right">
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="showDoc(row)">文档</el-button>
-          <el-button v-if="row.bindStatus !== 1" link type="success" size="small" @click="openBind(row)">绑定</el-button>
-          <el-button v-else link type="warning" size="small" @click="handleUnbind(row)">解绑</el-button>
+          <el-button link type="primary" size="small" @click="goTrace(row)">追溯</el-button>
+          <el-button link type="success" size="small" @click="handleValidate(row)">校验</el-button>
           <el-button v-if="row.didStatus !== 2" link type="danger" size="small" @click="handleFreeze(row)">冻结</el-button>
           <el-button v-else link type="success" size="small" @click="handleUnfreeze(row)">解冻</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="bindDialog" title="绑定物理标识" width="420px">
-      <el-form :model="bindForm" label-width="90px">
-        <el-form-item label="绑定类型">
-          <el-select v-model="bindForm.bindType" style="width: 100%">
-            <el-option label="二维码" value="QRCODE" />
-            <el-option label="RFID" value="RFID" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="绑定码">
-          <el-input v-model="bindForm.bindCode" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="bindForm.remark" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="bindDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitBind">确定</el-button>
-      </template>
+    <el-dialog v-model="validateDialog" title="DID 校验" width="520px">
+      <el-descriptions v-if="validateResult" :column="1" border size="small">
+        <el-descriptions-item label="DID">{{ validateResult.did || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="格式">{{ validateResult.formatValid ? '合法' : '不合法' }}</el-descriptions-item>
+        <el-descriptions-item label="库内存在">{{ validateResult.exists ? '是' : '否' }}</el-descriptions-item>
+        <el-descriptions-item label="激活状态">{{ validateResult.activated ? '已激活' : '未激活' }}</el-descriptions-item>
+        <el-descriptions-item label="零部件ID">{{ validateResult.partsId ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="说明">{{ validateResult.message || '-' }}</el-descriptions-item>
+      </el-descriptions>
     </el-dialog>
 
-    <el-dialog v-model="docDialog" title="DID 文档" width="760px">
+    <el-dialog v-model="docDialog" title="DID 文档" width="800px">
       <pre class="doc-pre">{{ currentDoc }}</pre>
     </el-dialog>
   </div>
@@ -83,17 +73,19 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { bindDid, freezeDid, generateDidSync, getDidDocument, getDidList, unbindDid, unfreezeDid } from '@/api/did'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { freezeDid, generateDidSync, getDidDocument, getDidList, unfreezeDid, validateDid } from '@/api/did'
+
+const router = useRouter()
 
 const loading = ref(false)
 const list = ref([])
 const query = reactive({ partsId: '', batchNumber: '', did: '', status: '' })
 const generatePartsId = ref('')
 
-const bindDialog = ref(false)
-const currentDidId = ref(null)
-const bindForm = reactive({ bindType: 'QRCODE', bindCode: '', remark: '' })
+const validateDialog = ref(false)
+const validateResult = ref(null)
 
 const docDialog = ref(false)
 const currentDoc = ref('')
@@ -117,30 +109,22 @@ const fetchList = async () => {
   }
 }
 
-const openBind = (row) => {
-  currentDidId.value = row.id
-  bindForm.bindType = 'QRCODE'
-  bindForm.bindCode = ''
-  bindForm.remark = ''
-  bindDialog.value = true
-}
-
-const submitBind = async () => {
-  if (!bindForm.bindCode) {
-    ElMessage.warning('请输入绑定码')
+const goTrace = (row) => {
+  if (!row?.did) {
+    ElMessage.warning('缺少 DID')
     return
   }
-  await bindDid(currentDidId.value, bindForm)
-  ElMessage.success('绑定成功')
-  bindDialog.value = false
-  await fetchList()
+  router.push({ path: '/query', query: { did: row.did } })
 }
 
-const handleUnbind = async (row) => {
-  await ElMessageBox.confirm(`确认解绑 DID：${row.did} ?`, '提示', { type: 'warning' })
-  await unbindDid(row.id)
-  ElMessage.success('解绑成功')
-  await fetchList()
+const handleValidate = async (row) => {
+  if (!row?.did) {
+    ElMessage.warning('缺少 DID')
+    return
+  }
+  const res = await validateDid(row.did)
+  validateResult.value = res.data || null
+  validateDialog.value = true
 }
 
 const handleFreeze = async (row) => {
@@ -155,9 +139,20 @@ const handleUnfreeze = async (row) => {
   await fetchList()
 }
 
+const formatDoc = (raw) => {
+  if (raw == null || raw === '') return ''
+  if (typeof raw === 'object') return JSON.stringify(raw, null, 2)
+  const text = String(raw).trim()
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
+
 const showDoc = async (row) => {
   const res = await getDidDocument(row.id)
-  currentDoc.value = res.data || ''
+  currentDoc.value = formatDoc(res.data)
   docDialog.value = true
 }
 
@@ -186,9 +181,13 @@ onMounted(fetchList)
   background: #0f172a;
   color: #e2e8f0;
   border-radius: 8px;
-  padding: 12px;
-  max-height: 460px;
+  padding: 16px;
+  max-height: 520px;
   overflow: auto;
   font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 </style>

@@ -59,6 +59,7 @@
         <div class="did-summary">
           <span class="did-label">零件DID</span>
           <code class="did-code">{{ result.didInfo?.did || '-' }}</code>
+          <el-tag v-if="result.unitInfo?.unitCode" type="info" size="small">单件 {{ result.unitInfo.unitCode }}</el-tag>
           <el-button size="small" @click="showDidDetail" :disabled="!result.didInfo">查看DID详情</el-button>
         </div>
       </div>
@@ -146,11 +147,13 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Connection, Tickets, Link, SuccessFilled, Loading } from '@element-plus/icons-vue'
 import { exportTraceReport, getCertificateDetail, queryTraceChain, queryTraceChainByDid } from '@/api/trace'
 
+const route = useRoute()
 const queryCode = ref('')
 const loading = ref(false)
 const searched = ref(false)
@@ -255,6 +258,7 @@ const doQueryByDid = async () => {
     result.value = {
       parts: data.partsInfo || {},
       didInfo: data.didInfo || null,
+      unitInfo: data.unitInfo || null,
       events: (data.events || []).map(normalizeEvent),
       certificates: (data.credentials || []).map(normalizeCert)
     }
@@ -292,6 +296,14 @@ const showCertDetail = async (cert) => {
   currentCert.value = res.data || cert
   certDetailVisible.value = true
 }
+
+onMounted(() => {
+  const did = route.query.did
+  if (typeof did === 'string' && did.trim()) {
+    queryDid.value = did.trim()
+    doQueryByDid()
+  }
+})
 </script>
 
 <style scoped>

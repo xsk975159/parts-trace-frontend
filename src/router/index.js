@@ -100,7 +100,8 @@ const routes = [
           }
         ]
       },
-      // 流程异常检测
+      // 录视频临时隐藏异常检测菜单，恢复时取消下面注释即可
+      /*
       {
         path: 'anomaly',
         name: 'Anomaly',
@@ -121,6 +122,7 @@ const routes = [
           }
         ]
       },
+      */
       // 追溯查询
       {
         path: 'query',
@@ -134,27 +136,6 @@ const routes = [
         name: 'Statistics',
         component: () => import('@/views/statistics/index.vue'),
         meta: { title: '数据统计', icon: 'DataLine' }
-      },
-      // 实验验证
-      {
-        path: 'experiment',
-        name: 'Experiment',
-        redirect: '/experiment/did-verify',
-        meta: { title: '实验验证', icon: 'Experiment' },
-        children: [
-          {
-            path: 'did-verify',
-            name: 'DidVerify',
-            component: () => import('@/views/experiment/did-verify.vue'),
-            meta: { title: 'DID 身份验证', icon: 'Key' }
-          },
-          {
-            path: 'cross-chain',
-            name: 'CrossChain',
-            component: () => import('@/views/experiment/cross-chain.vue'),
-            meta: { title: '跨链互操作验证', icon: 'Share' }
-          }
-        ]
       }
     ]
   }

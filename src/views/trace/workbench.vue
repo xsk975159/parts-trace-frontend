@@ -178,9 +178,6 @@
                 </el-row>
               </template>
 
-              <el-form-item label="操作策略">
-                <el-checkbox v-model="form.issueVc">处理完成后按勾选签发 VC</el-checkbox>
-              </el-form-item>
               <el-alert
                 v-if="form.batchNumber"
                 type="info"
@@ -191,10 +188,9 @@
               />
               <el-form-item label="提交">
                 <div class="submit-actions">
-                  <el-button type="primary" :loading="submitting" @click="submitRecord('continue')">执行批次处理</el-button>
-                  <el-button type="success" :loading="submitting" @click="submitRecord('vc')">执行并签发 VC</el-button>
+                  <el-button type="primary" :loading="submitting" @click="submitRecord">登记事件并签发 VC</el-button>
                 </div>
-                <p class="submit-hint">一次提交会处理当前范围内、符合当前事件类型的全部单件，不会逐条跳转；左侧勾选决定是否签发 VC，右侧按钮可无视勾选强制签发。</p>
+                <p class="submit-hint">每次提交会为符合当前阶段的单件完成「事件存证 + VC 签发 + 链上锚定」，二者一体，不支持仅登记事件。</p>
               </el-form-item>
             </el-form>
           </div>
@@ -336,14 +332,37 @@
         <pre class="doc">{{ JSON.stringify({ credentialData: currentVcDetail?.credentialData || currentVcDetail?.credential_data, proof: currentVcDetail?.proof }, null, 2) }}</pre>
       </div>
     </el-dialog>
-    <el-dialog v-model="batchPickerVisible" title="选择批次" width="920px">
-      <el-table :data="batchPickerPagedRows" size="small" border>
-        <el-table-column prop="batchNumber" label="批次号" width="170" />
-        <el-table-column prop="partsCode" label="示例零件编码" width="140" />
-        <el-table-column prop="partsName" label="示例零件名称" min-width="160" />
-        <el-table-column prop="manufacturer" label="生产厂商" min-width="180" />
-        <el-table-column prop="batchQuantity" label="批次数量" width="110" />
-        <el-table-column label="操作" width="100">
+    <el-dialog v-model="batchPickerVisible" title="选择批次" width="1080px">
+      <div class="picker-toolbar">
+        <el-input v-model="batchPickerKeyword" placeholder="搜索批次号 / 零件编码 / 名称 / 厂商" clearable style="width: 320px" />
+        <el-button @click="loadBatchSummaries" :loading="batchPickerLoading">刷新状态</el-button>
+      </div>
+      <el-table :data="batchPickerPagedRows" size="small" border v-loading="batchPickerLoading">
+        <el-table-column prop="batchNumber" label="批次号" width="150" />
+        <el-table-column prop="partsCode" label="示例零件编码" width="130" />
+        <el-table-column prop="partsName" label="示例零件名称" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="manufacturer" label="生产厂商" min-width="150" show-overflow-tooltip />
+        <el-table-column label="计划/单件" width="100">
+          <template #default="{ row }">
+            {{ formatPlannedQty(row.plannedQuantity) }}/{{ row.totalParts ?? 0 }}
+          </template>
+        </el-table-column>
+        <el-table-column label="DID" width="88">
+          <template #default="{ row }">
+            {{ row.withDidCount ?? 0 }}/{{ row.totalParts ?? 0 }}
+          </template>
+        </el-table-column>
+        <el-table-column label="完成率" width="120">
+          <template #default="{ row }">
+            <el-progress :percentage="row.completionRate ?? 0" :stroke-width="6" :show-text="true" />
+          </template>
+        </el-table-column>
+        <el-table-column label="当前阶段" width="120">
+          <template #default="{ row }">
+            <el-tag :type="phaseTagType(row.currentPhaseCode)" size="small">{{ row.currentPhase || '-' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="88" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="selectBatch(row.batchNumber)">选择</el-button>
           </template>
@@ -353,7 +372,7 @@
         <el-pagination
           v-model:current-page="batchPickerPage"
           v-model:page-size="batchPickerSize"
-          :total="batchPickerRows.length"
+          :total="batchPickerFilteredRows.length"
           :page-sizes="[10,20,50]"
           layout="total,sizes,prev,pager,next"
           background
@@ -366,12 +385,27 @@
         <el-tag :type="(lastResult.failed || 0) > 0 ? 'danger' : 'info'">失败 {{ lastResult.failed || 0 }}</el-tag>
         <el-button type="primary" :disabled="!(lastResult.failed > 0)" @click="retryFailed">一键重试失败件</el-button>
       </div>
-      <el-table :data="lastResult.failures || []" size="small" border>
-        <el-table-column prop="unitId" label="unitId" width="90" />
-        <el-table-column prop="unitCode" label="单件编码" width="180" />
-        <el-table-column prop="message" label="失败原因" min-width="260" />
-      </el-table>
-      <el-empty v-if="!(lastResult.failures || []).length" description="本次无失败单件" :image-size="60" />
+      <template v-if="(lastResult.failures || []).length">
+        <div class="result-section-title">失败明细</div>
+        <el-table :data="lastResult.failures" size="small" border>
+          <el-table-column prop="unitId" label="unitId" width="90" />
+          <el-table-column prop="unitCode" label="单件编码" width="180" />
+          <el-table-column prop="partsCode" label="零部件编码" width="140" />
+          <el-table-column prop="message" label="失败原因" min-width="260" />
+        </el-table>
+      </template>
+      <template v-else-if="(lastResult.successes || []).length">
+        <div class="result-section-title">成功明细</div>
+        <el-table :data="lastResult.successes" size="small" border>
+          <el-table-column prop="unitId" label="unitId" width="90" />
+          <el-table-column prop="unitCode" label="单件编码" width="180" />
+          <el-table-column prop="partsCode" label="零部件编码" width="140" />
+          <el-table-column prop="eventId" label="事件ID" width="90" />
+          <el-table-column prop="vcId" label="VC ID" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="message" label="说明" min-width="160" />
+        </el-table>
+      </template>
+      <el-empty v-else description="本次无处理结果" :image-size="60" />
     </el-drawer>
 
   </div>
@@ -382,7 +416,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { ElMessage } from 'element-plus'
 import { getPartsList } from '@/api/parts'
-import { generateDidSync } from '@/api/did'
+import { generateDidSync, generateUnitDid } from '@/api/did'
 import { getCertificateDetail, getCertificateList, getEventList, getWorkbenchBatchOverview, getWorkbenchBatches, submitWorkbenchBatchAction } from '@/api/trace'
 
 const store = useStore()
@@ -391,6 +425,7 @@ const currentUser = computed(() => store.state.user.userInfo)
 const activeTab = ref('record')
 const loadingTasks = ref(false)
 const batches = ref([])
+const batchSummaries = ref([])
 const selectedBatch = ref('')
 const batchItems = ref([])
 const batchSummary = reactive({ totalParts: 0, completedParts: 0, completionRate: 0 })
@@ -406,13 +441,15 @@ const vcDetailVisible = ref(false)
 const vcDetailLoading = ref(false)
 const currentVcDetail = ref(null)
 const batchPickerVisible = ref(false)
+const batchPickerLoading = ref(false)
+const batchPickerKeyword = ref('')
 const batchPickerPage = ref(1)
 const batchPickerSize = ref(10)
 const submitting = ref(false)
 const formRef = ref(null)
 const resultDrawerVisible = ref(false)
 const lastPayload = ref(null)
-const lastResult = reactive({ success: 0, failed: 0, failures: [] })
+const lastResult = reactive({ success: 0, failed: 0, successes: [], failures: [] })
 const batchEventVcRows = ref([])
 const boardSelected = ref(null)
 const boardDetailVisible = ref(false)
@@ -423,7 +460,7 @@ const statusVc = ref('待执行')
 const statusChain = ref('待执行')
 const statusStep = computed(() => {
   if (statusChain.value.includes('完成')) return 3
-  if (statusVc.value.includes('完成') || statusVc.value.includes('跳过')) return 2
+  if (statusVc.value.includes('完成')) return 2
   if (statusEvent.value.includes('完成')) return 1
   return 0
 })
@@ -440,7 +477,6 @@ const form = reactive({
   eventLocation: '',
   eventTime: '',
   evidenceUrls: '',
-  issueVc: true,
   productionLine: '',
   productionBatch: '',
   inspectionType: '',
@@ -588,28 +624,34 @@ const batchEventVcLinkedCount = computed(
   () => (batchEventVcRows.value || []).filter((r) => r.vcId).length
 )
 
-const batchPickerRows = computed(() => {
-  const map = new Map()
-  ;(allParts.value || []).forEach((p) => {
-    const batch = p.batchNumber || ''
-    if (!batch) return
-    if (!map.has(batch)) {
-      map.set(batch, {
-        batchNumber: batch,
-        partsCode: p.partsCode || '-',
-        partsName: p.partsName || '-',
-        manufacturer: p.manufacturer || '-',
-        batchQuantity: 0
-      })
-    }
-    map.get(batch).batchQuantity += Number(p.quantity || 0)
+const batchPickerFilteredRows = computed(() => {
+  const kw = (batchPickerKeyword.value || '').trim().toLowerCase()
+  const rows = batchSummaries.value || []
+  if (!kw) return rows
+  return rows.filter((r) => {
+    const text = [r.batchNumber, r.partsCode, r.partsName, r.manufacturer, r.currentPhase]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    return text.includes(kw)
   })
-  return [...map.values()].sort((a, b) => String(b.batchNumber).localeCompare(String(a.batchNumber)))
 })
 const batchPickerPagedRows = computed(() => {
   const start = (batchPickerPage.value - 1) * batchPickerSize.value
-  return batchPickerRows.value.slice(start, start + batchPickerSize.value)
+  return batchPickerFilteredRows.value.slice(start, start + batchPickerSize.value)
 })
+
+const formatPlannedQty = (qty) => {
+  if (qty == null || qty === '') return 0
+  const n = Number(qty)
+  return Number.isNaN(n) ? 0 : n
+}
+
+const phaseTagType = (code) => {
+  if (code === 'done') return 'success'
+  if (code === 'none') return 'danger'
+  return 'warning'
+}
 
 const unitCurrentPhase = (row) => {
   if (!row?.did || row?.didStatus === 2) return 'none'
@@ -693,11 +735,21 @@ const fetchParts = async () => {
   allParts.value = pageData.records || pageData.list || []
 }
 
+const loadBatchSummaries = async () => {
+  batchPickerLoading.value = true
+  try {
+    const res = await getWorkbenchBatches()
+    batchSummaries.value = res.data || []
+    batches.value = batchSummaries.value.map((b) => b.batchNumber).filter(Boolean)
+  } finally {
+    batchPickerLoading.value = false
+  }
+}
+
 const fetchTasks = async () => {
   loadingTasks.value = true
   try {
-    const res = await getWorkbenchBatches()
-    batches.value = res.data || []
+    await loadBatchSummaries()
     if (!selectedBatch.value && batches.value.length > 0) {
       selectedBatch.value = batches.value[0]
       form.batchNumber = selectedBatch.value
@@ -784,25 +836,38 @@ const batchGenerateDid = async () => {
     ElMessage.info('当前范围内单件 DID 均已生成，无需重复生成')
     return
   }
-  const targetPartsIds = [...new Set(needRows.map((r) => r.partsId).filter(Boolean))]
   let success = 0
   let failed = 0
-  for (const partsId of targetPartsIds) {
+  const unitRows = needRows.filter((r) => r.unitId)
+  const legacyRows = needRows.filter((r) => !r.unitId)
+  for (const row of unitRows) {
     try {
-      await generateDidSync(partsId)
+      await generateUnitDid(row.unitId)
       success++
-    } catch (e) {
+    } catch {
       failed++
     }
   }
-  ElMessage.success(`批量生成完成：成功${success}，失败${failed}`)
+  const legacyPartsIds = [...new Set(legacyRows.map((r) => r.partsId).filter(Boolean))]
+  for (const partsId of legacyPartsIds) {
+    const scoped = legacyRows.filter((r) => Number(r.partsId) === Number(partsId))
+    try {
+      await generateDidSync(partsId)
+      success += scoped.length
+    } catch {
+      failed += scoped.length
+    }
+  }
+  ElMessage.success(`批量生成完成：成功 ${success} 件，失败 ${failed} 件`)
   await fetchBatchOverview(targetBatch)
 }
 
-const openBatchPicker = () => {
+const openBatchPicker = async () => {
   batchPickerPage.value = 1
   batchPickerSize.value = 10
+  batchPickerKeyword.value = ''
   batchPickerVisible.value = true
+  await loadBatchSummaries()
 }
 
 const selectBatch = async (batchNumber) => {
@@ -876,7 +941,7 @@ const loadSelectedUnitTraceRows = async (row) => {
     return
   }
   const [eventRes, vcRes] = await Promise.all([
-    getEventList({ partsId: row.partsId }),
+    getEventList({ partsId: row.partsId, unitId: row.unitId }),
     getCertificateList({ partsId: row.partsId })
   ])
   const eventList = eventRes.data?.list || []
@@ -887,7 +952,6 @@ const loadSelectedUnitTraceRows = async (row) => {
     if (eventId) certByEvent.set(eventId, c)
   })
   selectedUnitTraceRows.value = eventList
-    .filter((e) => (e.unitId ?? e.unit_id) === row.unitId)
     .map((e) => {
       const cert = certByEvent.get(e.id)
       return {
@@ -919,7 +983,7 @@ const openVcDetail = async (row) => {
   }
 }
 
-const submitRecord = async (mode) => {
+const submitRecord = async () => {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (!valid) return
@@ -933,7 +997,7 @@ const submitRecord = async (mode) => {
     }
     submitting.value = true
     statusEvent.value = '执行中...'
-    statusVc.value = '待执行'
+    statusVc.value = '执行中...'
     statusChain.value = '待执行'
     try {
       const payload = {
@@ -946,24 +1010,26 @@ const submitRecord = async (mode) => {
         eventLocation: form.eventLocation,
         eventTime: form.eventTime,
         evidenceUrls: form.evidenceUrls,
-        issueVc: mode === 'vc' || form.issueVc,
+        issueVc: true,
         productionLine: form.productionLine,
         productionBatch: form.productionBatch,
         inspectionType: form.inspectionType,
         inspectionResult: form.inspectionResult,
         logisticsType: form.logisticsType,
         trackingNumber: form.trackingNumber,
-        ...(form.partsInfoIds?.length ? { partsIds: form.partsInfoIds.map(Number) } : {})
+        ...(form.partsInfoIds?.length ? { partsIds: form.partsInfoIds.map(Number) } : {}),
+        unitIds: eligibleRows.value.map((r) => r.unitId).filter(Boolean)
       }
       lastPayload.value = payload
       const res = await submitWorkbenchBatchAction(payload)
       statusEvent.value = '已完成'
-      statusVc.value = payload.issueVc ? '已完成' : '已跳过'
+      statusVc.value = '已完成'
       statusChain.value = '已完成'
       const data = res.data || {}
       ElMessage.success(`批次处理完成：成功${data.success || 0}，失败${data.failed || 0}`)
       lastResult.success = data.success || 0
       lastResult.failed = data.failed || 0
+      lastResult.successes = data.successes || []
       lastResult.failures = data.failures || []
       resultDrawerVisible.value = true
       await fetchTasks()
@@ -981,14 +1047,25 @@ const submitRecord = async (mode) => {
 
 const retryFailed = async () => {
   if (!lastPayload.value || !lastResult.failed) return
-  const res = await submitWorkbenchBatchAction(lastPayload.value)
+  const failedUnitIds = (lastResult.failures || [])
+    .map((f) => f.unitId)
+    .filter(Boolean)
+  const payload = failedUnitIds.length
+    ? { ...lastPayload.value, unitIds: failedUnitIds }
+    : lastPayload.value
+  const res = await submitWorkbenchBatchAction(payload)
   const data = res.data || {}
   lastResult.success = data.success || 0
   lastResult.failed = data.failed || 0
+  lastResult.successes = data.successes || []
   lastResult.failures = data.failures || []
   ElMessage.success(`重试完成：成功${data.success || 0}，失败${data.failed || 0}`)
   await fetchBatchOverview(form.batchNumber)
 }
+
+watch(batchPickerKeyword, () => {
+  batchPickerPage.value = 1
+})
 
 watch(activeTab, (name) => {
   if (name === 'followup' && selectedBatch.value) {
@@ -1044,12 +1121,14 @@ onMounted(async () => {
 .vc-json-title { font-size: 13px; color: #64748b; margin-bottom: 8px; }
 .record-side { display: flex; flex-direction: column; gap: 12px; }
 .result-head { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.result-section-title { margin: 0 0 8px; font-size: 13px; color: #64748b; font-weight: 600; }
 .kv { display: flex; align-items: center; justify-content: space-between; margin: 6px 0; font-size: 13px; }
 .did-section-title { font-size: 12px; color: #64748b; margin-bottom: 6px; }
 .parts-select-hint { font-size: 12px; color: #94a3b8; margin: 6px 0 0; line-height: 1.45; }
 .side-hint { font-size: 12px; color: #94a3b8; margin: 8px 0 0; line-height: 1.5; }
 .did-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 .batch-picker-inline { display: grid; grid-template-columns: 1fr auto; gap: 8px; width: 100%; }
+.picker-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 .picker-pagination { margin-top: 12px; display: flex; justify-content: flex-end; }
 .ctx-alert { margin-top: 10px; }
 .hint { color: #64748b; margin-bottom: 10px; }
