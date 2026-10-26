@@ -154,8 +154,9 @@
               <el-form-item label="地点">
                 <el-input v-model="form.eventLocation" />
               </el-form-item>
-              <el-form-item label="附件URL">
-                <el-input v-model="form.evidenceUrls" placeholder="可填多个URL，逗号分隔" />
+              <el-form-item label="佐证附件">
+                <el-input v-model="form.evidenceUrls" placeholder="上传附件后自动生成内容地址" readonly />
+                <el-upload :http-request="uploadEvidence" :show-file-list="false"><el-button>上传附件（每份不超过10MB）</el-button></el-upload>
               </el-form-item>
 
               <el-divider>类型专属字段</el-divider>
@@ -168,7 +169,7 @@
               <template v-if="form.eventType === 'quality'">
                 <el-row :gutter="12">
                   <el-col :span="12"><el-form-item label="检验类型"><el-input v-model="form.inspectionType" /></el-form-item></el-col>
-                  <el-col :span="12"><el-form-item label="检验结果"><el-input v-model="form.inspectionResult" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="检验结果"><el-select v-model="form.inspectionResult"><el-option label="合格" value="合格" /><el-option label="不合格" value="不合格" /></el-select></el-form-item></el-col>
                 </el-row>
               </template>
               <template v-if="form.eventType === 'logistics'">
@@ -190,7 +191,7 @@
                 <div class="submit-actions">
                   <el-button type="primary" :loading="submitting" @click="submitRecord">登记事件并签发 VC</el-button>
                 </div>
-                <p class="submit-hint">每次提交会为符合当前阶段的单件完成「事件存证 + VC 签发 + 链上锚定」，二者一体，不支持仅登记事件。</p>
+                <p class="submit-hint">每次提交会为符合当前阶段的单件完成「事件记录 + VC 签发」。真实模式在业务提交后执行存证任务；成功确认前显示待上链或失败。</p>
               </el-form-item>
             </el-form>
           </div>
@@ -412,12 +413,13 @@
 </template>
 
 <script setup>
+import request from '@/utils/request'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { ElMessage } from 'element-plus'
 import { getPartsList } from '@/api/parts'
 import { generateDidSync, generateUnitDid } from '@/api/did'
-import { getCertificateDetail, getCertificateList, getEventList, getWorkbenchBatchOverview, getWorkbenchBatches, submitWorkbenchBatchAction } from '@/api/trace'
+import { getCertificateDetail, getCertificateList, getEventList, getAllEventRecords, getAllCredentialRecords, getWorkbenchBatchOverview, getWorkbenchBatches, submitWorkbenchBatchAction } from '@/api/trace'
 
 const store = useStore()
 const currentUser = computed(() => store.state.user.userInfo)
@@ -654,7 +656,8 @@ const phaseTagType = (code) => {
 }
 
 const unitCurrentPhase = (row) => {
-  if (!row?.did || row?.didStatus === 2) return 'none'
+  if (!row?.did) return 'none'
+  if (row.didStatus === 2) return ['quality','production'].includes(row.latestEventType) ? 'quality' : 'none'
   const t = (row?.latestEventType || '').toLowerCase()
   if (row?.vcCount > 0 && t === 'logistics') return 'done'
   if (t === 'quality') return 'logistics'
@@ -685,7 +688,7 @@ const currentPhaseTag = computed(() => {
 const eligibleRows = computed(() => {
   const target = form.eventType
   return batchItemsInScope.value.filter((r) => {
-    if (!r.did || r.didStatus === 2) return false
+    if (!r.did || (r.didStatus === 2 && form.eventType !== 'quality')) return false
     const p = unitCurrentPhase(r)
     return p === target
   })
@@ -695,7 +698,7 @@ const ineligibleCount = computed(() => Math.max((batchItemsInScope.value || []).
 const eligibilityHint = computed(() => {
   const t = form.eventType
   if (t === 'production') return '生产仅处理已激活 DID 且尚未记录生产事件的单件'
-  if (t === 'quality') return '质检仅处理已完成生产事件的单件'
+  if (t === 'quality') return '质检处理已完成生产的单件；被冻结的单件可追加复检'
   return '物流仅处理已完成质检事件的单件'
 })
 
@@ -900,8 +903,8 @@ const loadBatchEventVcRows = async () => {
     return
   }
   const [eventRes, vcRes] = await Promise.all([
-    getEventList({}),
-    getCertificateList({})
+    getAllEventRecords({}),
+    getAllCredentialRecords({})
   ])
   const eventList = eventRes.data?.list || []
   const certList = vcRes.data?.list || []
@@ -941,8 +944,8 @@ const loadSelectedUnitTraceRows = async (row) => {
     return
   }
   const [eventRes, vcRes] = await Promise.all([
-    getEventList({ partsId: row.partsId, unitId: row.unitId }),
-    getCertificateList({ partsId: row.partsId })
+    getAllEventRecords({ partsId: row.partsId, unitId: row.unitId }),
+    getAllCredentialRecords({ partsId: row.partsId })
   ])
   const eventList = eventRes.data?.list || []
   const certList = vcRes.data?.list || []
@@ -983,6 +986,15 @@ const openVcDetail = async (row) => {
   }
 }
 
+const uploadEvidence = async ({file,onSuccess,onError}) => {
+  if(file.size > 10*1024*1024) { ElMessage.warning('附件超过10MB');onError(new Error('附件过大'));return }
+  try {
+    const body=new FormData();body.append('file',file)
+    const result=await request.post('/attachments',body)
+    form.evidenceUrls=[form.evidenceUrls,result.data.reference].filter(Boolean).join(',')
+    onSuccess(result);ElMessage.success('附件已上传')
+  } catch(e) {onError(e)}
+}
 const submitRecord = async () => {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
@@ -1001,6 +1013,7 @@ const submitRecord = async () => {
     statusChain.value = '待执行'
     try {
       const payload = {
+        requestId: crypto.randomUUID(),
         batchNumber: form.batchNumber,
         actionType: form.eventType,
         eventName: form.eventName,
@@ -1024,7 +1037,7 @@ const submitRecord = async () => {
       const res = await submitWorkbenchBatchAction(payload)
       statusEvent.value = '已完成'
       statusVc.value = '已完成'
-      statusChain.value = '已完成'
+      statusChain.value = '请查看存证状态'
       const data = res.data || {}
       ElMessage.success(`批次处理完成：成功${data.success || 0}，失败${data.failed || 0}`)
       lastResult.success = data.success || 0

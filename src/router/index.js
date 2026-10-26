@@ -19,6 +19,7 @@ const routes = [
         component: () => import('@/views/dashboard/index.vue'),
         meta: { title: '工作台', icon: 'DataLine' }
       },
+      { path: 'profile', name: 'Profile', component: () => import('@/views/user/profile.vue'), meta: { title: '个人身份与密钥', icon: 'Key' } },
       // 用户管理
       {
         path: 'user',
@@ -100,8 +101,6 @@ const routes = [
           }
         ]
       },
-      // 录视频临时隐藏异常检测菜单，恢复时取消下面注释即可
-      /*
       {
         path: 'anomaly',
         name: 'Anomaly',
@@ -122,7 +121,6 @@ const routes = [
           }
         ]
       },
-      */
       // 追溯查询
       {
         path: 'query',

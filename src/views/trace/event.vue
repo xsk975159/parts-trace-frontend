@@ -43,7 +43,7 @@
           <el-tooltip :content="row.txHash || '-'" placement="top">
             <el-tag :type="row.txHash ? 'success' : 'info'" size="small">
               <el-icon><SuccessFilled /></el-icon>
-              {{ row.txHash ? '已上链' : '未上链' }}
+              {{ ({0:'待上链',1:'已确认',2:'本地模拟','-1':'上链失败'})[row.chainStatus] || '待核验' }}
             </el-tag>
           </el-tooltip>
         </template>
@@ -130,6 +130,8 @@
 </template>
 
 <script setup>
+import { useRouter } from 'vue-router'
+const router = useRouter()
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Search, SuccessFilled, Link } from '@element-plus/icons-vue'
@@ -181,6 +183,7 @@ const normalizeEvent = (e) => {
     description: e.description || e.remark || '',
     eventTime: e.eventTime || e.event_time || '',
     txHash: e.txHash || e.blockchainTxId || e.blockchain_tx_id || '',
+    chainStatus: e.chainStatus ?? e.chain_status,
     blockHash: e.blockHash || ''
   }
 }
@@ -211,7 +214,7 @@ const fetchEvents = async () => {
     }
 
     eventList.value = list
-    pagination.total = list.length
+    pagination.total = Number(data.total || 0)
   } finally {
     loading.value = false
   }
@@ -228,19 +231,7 @@ const viewDetail = (row) => {
   drawerVisible.value = true
 }
 
-const openDialog = () => {
-  if (formRef.value) formRef.value.resetFields()
-  Object.assign(form, {
-    partsCode: '',
-    eventType: '',
-    eventName: '',
-    operatorName: '',
-    location: '',
-    eventTime: '',
-    description: ''
-  })
-  dialogVisible.value = true
-}
+const openDialog = () => router.push('/trace/workbench')
 
 const submitForm = async () => {
   if (!formRef.value) return

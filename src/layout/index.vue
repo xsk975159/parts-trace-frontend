@@ -128,14 +128,14 @@ const handleCommand = async (command) => {
         cancelButtonText: '取消',
         type: 'warning'
       })
-      store.dispatch('user/logout')
+      await store.dispatch('user/logout')
       router.push('/login')
       ElMessage.success('已退出登录')
     } catch (error) {
       // 取消操作
     }
   } else if (command === 'profile') {
-    ElMessage.info('个人中心功能开发中')
+    router.push('/profile')
   } else if (command === 'settings') {
     ElMessage.info('系统设置功能开发中')
   }

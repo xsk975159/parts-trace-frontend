@@ -1,4 +1,4 @@
-import { login, getUserInfo } from '@/api/user'
+import { login, getUserInfo, logout } from '@/api/user'
 
 export default {
   namespaced: true,
@@ -43,7 +43,8 @@ export default {
       commit('SET_PERMISSIONS', permissions)
       return res
     },
-    logout({ commit }) {
+    async logout({ commit }) {
+      await logout()
       commit('CLEAR_USER')
     }
   }

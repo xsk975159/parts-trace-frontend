@@ -109,7 +109,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
-import mockData from '@/utils/mock'
 import { getDashboardStats } from '@/api/dashboard'
 import { getEventList } from '@/api/trace'
 import { getAlertList } from '@/api/anomaly'
@@ -133,13 +132,12 @@ const kpis = computed(() => [
 ])
 
 const eventDist = computed(() => {
-  const total = allEvents.value.length || 1
-  return [
-    { label: '生产事件', key: 'production', color: '#667eea' },
-    { label: '质检事件', key: 'quality', color: '#48bb78' },
-    { label: '物流事件', key: 'logistics', color: '#ed8936' },
-    { label: '交付事件', key: 'delivery', color: '#38b2ac' }
-  ].map(t => { const count = allEvents.value.filter(e => e.eventType===t.key).length; return {...t, count, pct: Math.round(count/total*100)} })
+  const rows = statsData.value.eventDistribution || []
+  const total = rows.reduce((sum, row) => sum + Number(row.count || 0), 0) || 1
+  return [{ label:'生产事件',key:'production',color:'#667eea' },{ label:'质检事件',key:'quality',color:'#48bb78' },{ label:'物流事件',key:'logistics',color:'#ed8936' }].map(type => {
+    const count = Number(rows.find(row => row.eventType === type.key)?.count || 0)
+    return { ...type, count, pct: Math.round(count / total * 100) }
+  })
 })
 
 const circumference = 2 * Math.PI * 45
@@ -153,12 +151,11 @@ const donutSegments = computed(() => {
   })
 })
 
-const categoryStats = computed(() =>
-  mockData.categories.filter(c => c.parentId===0).map((c,i) => ({
-    name: c.categoryName, count: [8,5][i]||3, pct: [85,50][i]||30,
-    color: ['#667eea','#48bb78','#ed8936','#f5576c'][i%4]
-  }))
-)
+const categoryStats = computed(() => {
+  const rows = statsData.value.categoryStats || []
+  const total = rows.reduce((sum, row) => sum + Number(row.count || 0), 0) || 1
+  return rows.map((row, i) => ({ name:row.name, count:Number(row.count), pct:Math.round(Number(row.count)/total*100), color:['#667eea','#48bb78','#ed8936','#f5576c'][i%4] }))
+})
 
 const alertStats = computed(() => ({
   error: allAlerts.value.filter(a=>a.alertLevel==='error').length,
@@ -173,10 +170,13 @@ const handlePct = computed(() => {
 })
 
 const genTrend = () => {
-  trendData.value = Array.from({length:7},(_,i) => {
+  const rows = statsData.value.eventTrend || []
+  trendData.value = Array.from({length:7}, (_,i) => {
     const d = new Date(); d.setDate(d.getDate()-(6-i))
-    return { date:`${d.getMonth()+1}/${d.getDate()}`, production:Math.floor(Math.random()*15)+5,
-      quality:Math.floor(Math.random()*12)+3, logistics:Math.floor(Math.random()*10)+2, delivery:Math.floor(Math.random()*8)+1 }
+    const day = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    const point = { date:`${d.getMonth()+1}/${d.getDate()}`, production:0,quality:0,logistics:0,delivery:0 }
+    rows.filter(row => row.day === day).forEach(row => { point[row.eventType] = Number(row.count) })
+    return point
   })
 }
 

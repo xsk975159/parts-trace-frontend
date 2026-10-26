@@ -70,6 +70,7 @@
         <el-form-item label="真实姓名" prop="realName">
           <el-input v-model="form.realName" placeholder="请输入真实姓名" />
         </el-form-item>
+        <el-form-item v-if="form.id" label="登记机构"><el-input v-model="form.organization" placeholder="由管理员登记所属机构" /></el-form-item>
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="form.email" placeholder="请输入邮箱" />
         </el-form-item>
@@ -113,7 +114,7 @@ const userList = ref([])
 
 const form = reactive({
   id: null, username: '', password: '', realName: '',
-  email: '', phone: '', userType: 'normal', remark: ''
+  organization: '', email: '', phone: '', userType: 'normal', remark: ''
 })
 
 const rules = {
@@ -153,7 +154,7 @@ const openDialog = (row = null) => {
     Object.assign(form, { ...row, password: '' })
   } else {
     dialogTitle.value = '新增用户'
-    Object.assign(form, { id: null, username: '', password: '', realName: '', email: '', phone: '', userType: 'normal', remark: '' })
+    Object.assign(form, { id: null, username: '', password: '', realName: '', organization: '', email: '', phone: '', userType: 'normal', remark: '' })
   }
   dialogVisible.value = true
 }

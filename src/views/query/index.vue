@@ -123,6 +123,38 @@
           </div>
         </div>
       </div>
+
+      <div v-if="crossChain" class="cross-chain-card">
+        <div class="section-title">
+          <el-icon><Share /></el-icon>
+          跨链分布式存储溯源
+          <span class="section-count">{{ crossChain.records.length }} 条中继</span>
+        </div>
+        <div class="chain-topology">
+          <div v-for="c in crossChain.chains" :key="c.id" class="chain-node" :class="c.chainRole?.toLowerCase()">
+            <div class="chain-node-name">{{ c.chainName }}</div>
+            <el-tag :type="c.chainType === 'FISCO_BCOS' ? 'warning' : 'primary'" size="small" effect="plain">
+              {{ c.chainType === 'FISCO_BCOS' ? 'FISCO BCOS' : '长安链' }}
+            </el-tag>
+            <div class="chain-node-role">{{ c.chainRole === 'REGULATOR' ? '监管' : '业务' }}</div>
+          </div>
+        </div>
+        <el-table :data="crossChain.records" size="small" border>
+          <el-table-column prop="businessType" label="业务类型" width="100">
+            <template #default="{ row }">{{ bizTypeLabel(row.businessType) }}</template>
+          </el-table-column>
+          <el-table-column prop="sourceChainId" label="源链" width="110">
+            <template #default="{ row }">{{ chainNameMap[row.sourceChainId] || row.sourceChainId }}</template>
+          </el-table-column>
+          <el-table-column prop="sourceTxHash" label="源交易" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="dataHash" label="数据哈希" min-width="190" show-overflow-tooltip />
+          <el-table-column prop="targetTxHash" label="主链交易" min-width="170" show-overflow-tooltip />
+          <el-table-column label="同步状态" width="110"><template #default="{ row }">{{ ({0:'待同步',1:'已确认',2:'本地模拟',3:'同步中','-1':'同步失败'})[row.status] || '未知' }}</template></el-table-column>
+          <el-table-column prop="lastError" label="失败原因" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="targetBlockHeight" label="主链高度" width="90" />
+          <el-table-column prop="relayTime" label="中继时间" width="170" />
+        </el-table>
+      </div>
     </div>
 
     <div v-else-if="searched" class="no-result">
@@ -150,8 +182,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Connection, Tickets, Link, SuccessFilled, Loading } from '@element-plus/icons-vue'
-import { exportTraceReport, getCertificateDetail, queryTraceChain, queryTraceChainByDid } from '@/api/trace'
+import { Search, Connection, Tickets, Link, Share, SuccessFilled, Loading } from '@element-plus/icons-vue'
+import { exportTraceReport, getCertificateDetail, getCrossChainOverview, queryTraceChain, queryTraceChainByDid } from '@/api/trace'
 
 const route = useRoute()
 const queryCode = ref('')
@@ -165,11 +197,28 @@ const eventDetailVisible = ref(false)
 const certDetailVisible = ref(false)
 const currentEvent = ref(null)
 const currentCert = ref(null)
+const crossChain = ref(null)
 
 const eventTypeLabel = (t) => ({ production: '生产', quality: '质检', logistics: '物流', delivery: '交付' }[t] || t)
 const eventTypeTag = (t) => ({ production: '', quality: 'success', logistics: 'warning', delivery: 'info' }[t] || '')
 const eventTimelineType = (t) => ({ production: 'primary', quality: 'success', logistics: 'warning', delivery: 'info' }[t] || 'primary')
 const certTypeLabel = (t) => ({ production: '生产证明', quality: '质检报告', transfer: '流转证明', comprehensive: '综合凭证' }[t] || t)
+const bizTypeLabel = (t) => ({ trace_event: '溯源事件', vc: '数字凭证', did_document_unit: 'DID文档', vc_append: 'VC挂载' }[t] || t)
+const chainNameMap = computed(() => {
+  const m = {}
+  ;(crossChain.value?.chains || []).forEach((c) => { m[c.chainCode] = c.chainName })
+  return m
+})
+const loadCrossChain = async (did) => {
+  crossChain.value = null
+  if (!did) return
+  try {
+    const res = await getCrossChainOverview(did)
+    crossChain.value = res.data || null
+  } catch (e) {
+    crossChain.value = null
+  }
+}
 
 const normalizeEvent = (e) => ({
   id: e.id,
@@ -188,7 +237,7 @@ const normalizeCert = (c) => ({
   vcType: c.vcType || c.vc_type || '',
   issuerName: c.issuerName || c.issuer_name || '',
   issuanceDate: c.issuanceDate || c.issuance_date || '',
-  verified: c.status === 1
+  verified: false
 })
 
 const partsMeta = computed(() => {
@@ -230,8 +279,12 @@ const doQuery = async () => {
     }
     const didFromEvent = (data.events || []).map((e) => e.partsDid).find(Boolean)
     const didFromCert = (data.certificates || []).map((c) => c.holderDid || c.subjectDid).find(Boolean)
-    if (didFromEvent || didFromCert) {
-      result.value.didInfo = { did: didFromEvent || didFromCert }
+    const resolvedDid = didFromEvent || didFromCert
+    if (resolvedDid) {
+      result.value.didInfo = { did: resolvedDid }
+      await loadCrossChain(resolvedDid)
+    } else {
+      crossChain.value = null
     }
   } finally {
     loading.value = false
@@ -262,6 +315,8 @@ const doQueryByDid = async () => {
       events: (data.events || []).map(normalizeEvent),
       certificates: (data.credentials || []).map(normalizeCert)
     }
+    const resolvedDid = data.didInfo?.did || did
+    await loadCrossChain(resolvedDid)
   } finally {
     loading.value = false
   }
@@ -273,13 +328,16 @@ const downloadReport = async (format) => {
     ElMessage.warning('请先输入DID')
     return
   }
-  if (format === 'csv') {
-    window.open(`/api/trace/report?did=${encodeURIComponent(did)}&format=csv`, '_blank')
-    return
-  }
-  const res = await exportTraceReport(did, 'json')
-  ElMessage.success('JSON报告已返回，可在网络响应中查看')
-  console.log('trace-report-json', res.data)
+  const res = await exportTraceReport(did, format)
+  const blob = format === 'csv' ? new Blob(['\uFEFF', res.data], { type: 'text/csv;charset=utf-8' })
+    : new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `溯源报告-${did.replace(/[^a-zA-Z0-9_-]/g, '_')}.${format}`
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  ElMessage.success('报告已下载')
 }
 
 const showDidDetail = () => {
@@ -335,6 +393,12 @@ onMounted(() => {
 
 .content-grid { display: grid; grid-template-columns: 1fr 360px; gap: 20px; }
 .timeline-card, .certs-card { background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #e2e8f0; }
+.cross-chain-card { background: #ffffff; border-radius: 16px; padding: 24px; border: 1px solid #e2e8f0; }
+.chain-topology { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.chain-node { flex: 1; min-width: 160px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.chain-node.regulator { border-color: #93c5fd; background: #eff6ff; }
+.chain-node-name { font-size: 14px; font-weight: 600; color: #1e293b; }
+.chain-node-role { font-size: 12px; color: #64748b; }
 .section-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 24px; }
 .section-count { margin-left: auto; font-size: 12px; color: #94a3b8; background: #f1f5f9; padding: 2px 10px; border-radius: 10px; }
 

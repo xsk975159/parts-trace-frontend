@@ -38,19 +38,19 @@
         </el-form-item>
         <el-form-item label="规则类型" prop="ruleType">
           <el-select v-model="form.ruleType" style="width:100%">
-            <el-option label="时效规则" value="time" />
+
             <el-option label="质量规则" value="quality" />
-            <el-option label="物流规则" value="logistics" />
+
           </el-select>
         </el-form-item>
         <el-form-item label="规则描述">
           <el-input v-model="form.description" type="textarea" :rows="3" placeholder="描述规则的触发条件和作用" />
         </el-form-item>
         <el-form-item label="触发条件">
-          <el-input v-model="form.condition" type="textarea" :rows="3" placeholder='JSON格式，如：{"eventType":"production","maxHours":24}' />
+          <el-input v-model="form.condition" type="textarea" :rows="3" placeholder='JSON格式，如：{"field":"inspectionResult","operator":"eq","value":"不合格"}' />
         </el-form-item>
         <el-form-item label="处理动作">
-          <el-input v-model="form.action" type="textarea" :rows="3" placeholder='JSON格式，如：{"alertLevel":"warning"}' />
+          <el-input v-model="form.action" type="textarea" :rows="3" placeholder='JSON格式，如：{"type":"freeze_batch"}' />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -78,10 +78,10 @@ const form = reactive({
   id: null,
   ruleName: '',
   ruleCode: '',
-  ruleType: 'time',
+  ruleType: 'quality',
   description: '',
-  condition: '',
-  action: '',
+  condition: '{"field":"inspectionResult","operator":"eq","value":"不合格"}',
+  action: '{"type":"freeze_batch"}',
   status: 1
 })
 
@@ -118,10 +118,10 @@ const openDialog = (row = null) => {
       id: null,
       ruleName: '',
       ruleCode: '',
-      ruleType: 'time',
+      ruleType: 'quality',
       description: '',
-      condition: '',
-      action: '',
+      condition: '{"field":"inspectionResult","operator":"eq","value":"不合格"}',
+      action: '{"type":"freeze_batch"}',
       status: 1
     })
   }

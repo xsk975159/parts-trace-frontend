@@ -90,7 +90,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Tickets, SuccessFilled } from '@element-plus/icons-vue'
-import { getCertificateDetail, getCertificateList, verifyCertificate } from '@/api/trace'
+import { getCertificateDetail, getAllCredentialRecords, getCertificateList, verifyCertificate } from '@/api/trace'
 import { getPartsList } from '@/api/parts'
 
 const loading = ref(false)
@@ -138,7 +138,7 @@ const fetchPartsMap = async () => {
 const fetchCerts = async () => {
   loading.value = true
   try {
-    const res = await getCertificateList({ page: 1, pageSize: 1000 })
+    const res = await getAllCredentialRecords({})
     let list = (res.data?.list || []).map(normalizeCert)
 
     if (searchForm.keyword) {
@@ -168,8 +168,9 @@ const viewDetail = async (cert) => {
 const verifyCert = async (cert) => {
   const res = await verifyCertificate(cert.id)
   const ok = !!res.data?.verified
+  cert.verified = ok
   ElMessage({
-    message: ok ? `凭证 ${cert.vcId} 验证通过` : `凭证 ${cert.vcId} 验证未通过`,
+    message: res.data?.reason || `凭证 ${cert.vcId} 验证未通过`,
     type: ok ? 'success' : 'warning',
     duration: 2500
   })

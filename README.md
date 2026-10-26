@@ -1,188 +1,67 @@
-﻿# 零部件溯源系统 - 前端项目
+﻿# 零部件可信溯源前端
 
-## 项目简介
+Vue 3与Element Plus前端，通过后端API管理单件身份、业务记录、凭证和质量异常。本文命令与文件路径均相对于 `parts-trace-frontend/`。
 
-基于Vue 3 + Element Plus的零部件溯源系统前端应用。
+## 1. 安装与启动
 
-## 技术栈
+需要Node.js和npm。已有构建记录使用Node.js 22，依赖版本以[package-lock.json](package-lock.json)为准，脚本以[package.json](package.json)为准。
 
-- **框架**: Vue 3
-- **UI组件库**: Element Plus
-- **构建工具**: Vite
-- **状态管理**: Vuex
-- **路由**: Vue Router
-- **HTTP客户端**: Axios
-
-## 项目结构
-
-```
-parts-trace-frontend/
-├── src/
-│   ├── views/                  # 页面组件
-│   │   ├── parts/              # 零部件管理
-│   │   │   ├── PartsList.vue   # 零部件列表
-│   │   │   ├── PartsRegister.vue # 零部件注册
-│   │   │   └── PartsDetail.vue # 零部件详情
-│   │   ├── trace/              # 溯源管理
-│   │   │   ├── TraceQuery.vue  # 溯源查询
-│   │   │   └── TraceHistory.vue # 溯源历史
-│   │   ├── chain/              # 区块链信息
-│   │   │   ├── ChainInfo.vue   # 链信息
-│   │   │   └── BlockQuery.vue   # 区块查询
-│   │   ├── Login.vue           # 登录页面
-│   │   └── Register.vue        # 注册页面
-│   ├── components/             # 公共组件
-│   │   ├── KeWeiHeadNav.vue    # 头部导航
-│   │   ├── KeWeiAsideMenu.vue  # 侧边菜单
-│   │   ├── KeWeiTable.vue      # 表格组件
-│   │   ├── KeWeiInput.vue      # 输入框组件
-│   │   └── KeWeiButton.vue     # 按钮组件
-│   ├── router/                 # 路由配置
-│   │   ├── index.js            # 路由主文件
-│   │   ├── manageNavRouter.js  # 管理端路由
-│   │   └── clientNavRouter.js  # 客户端路由
-│   ├── store/                  # Vuex状态管理
-│   │   ├── index.js            # Store主文件
-│   │   ├── modules/
-│   │   │   ├── user.js         # 用户模块
-│   │   │   └── parts.js        # 零部件模块
-│   ├── apis/                   # API接口
-│   │   ├── request.js          # Axios配置
-│   │   ├── parts.js            # 零部件接口
-│   │   ├── trace.js            # 溯源接口
-│   │   └── chain.js            # 区块链接口
-│   ├── utils/                  # 工具函数
-│   │   ├── auth.js             # 认证工具
-│   │   └── common.js           # 通用工具
-│   ├── assets/                 # 静态资源
-│   │   ├── css/
-│   │   │   ├── main.css
-│   │   │   └── base.css
-│   │   └── images/
-│   ├── App.vue                 # 根组件
-│   └── main.js                 # 入口文件
-├── public/                     # 公共资源
-├── index.html                  # HTML模板
-├── vite.config.js              # Vite配置
-└── package.json                # 项目配置
-```
-
-## 开发指南
-
-### 环境要求
-
-- Node.js 16.0+
-- npm 或 yarn
-
-### 安装依赖
-
-```bash
-npm install
-# 或
-yarn install
-```
-
-### 开发运行
-
-```bash
+```powershell
+npm ci
 npm run dev
-# 或
-yarn dev
 ```
 
-访问地址: http://localhost:5173
+开发服务默认地址为 `http://localhost:5173`。后端须另行启动，默认端口8080；首页可打开不代表登录和业务API已经可用。停止服务按 `Ctrl+C`。
 
-### 构建生产版本
+## 2. 实际目录
 
-```bash
+| 路径 | 内容 |
+| --- | --- |
+| [src/main.js](src/main.js) | 创建Vue应用并注册Element Plus、路由与状态管理 |
+| [src/router/index.js](src/router/index.js) | 全部页面路由与登录守卫 |
+| `src/layout/` | 页面布局与菜单 |
+| `src/views/` | 登录、工作台、用户、零部件、追溯、异常及统计页面 |
+| `src/api/` | 用户、DID、零部件、追溯、异常和统计API封装 |
+| [src/utils/request.js](src/utils/request.js) | Axios接口基址、令牌和响应处理 |
+| `src/store/modules/` | `user`、`parts`、`trace`、`anomaly`状态模块 |
+| `src/styles/` | 页面样式 |
+| `public/` | 不经过模块打包的静态文件 |
+| [vite.config.js](vite.config.js) | 开发代理、路径别名和构建输出 |
+| `dist/` | 执行生产构建后生成的静态文件 |
+
+当前项目没有独立的管理端/客户端路由文件，也不使用 `src/apis/` 目录。实际API封装统一位于 `src/api/`。
+
+## 3. 页面与接口范围
+
+| 页面路径 | 内容 |
+| --- | --- |
+| `/login` | 登录 |
+| `/dashboard` | 工作台与概览 |
+| `/profile` | 本人DID、签名密钥、历史明文密钥迁移及管理员任务入口 |
+| `/user/list`、`/user/role`、`/user/permission` | 用户、角色与权限 |
+| `/parts/category`、`/parts/list`、`/parts/did` | 分类、主数据、单件及DID |
+| `/trace/workbench`、`/trace/event`、`/trace/certificate` | 批次操作、事件记录及凭证 |
+| `/anomaly/rule`、`/anomaly/alert` | 质量规则与异常处置 |
+| `/query` | 追溯核验、跨链拓扑/中继记录及报告导出 |
+| `/statistics` | 根据后端持久化数据展示统计 |
+
+当前页面展示跨链拓扑和中继记录，不提供独立的通用区块浏览器或节点运维界面。权限与业务范围以[后端功能说明](../parts-trace-backend/docs/功能与数据说明.md)为准。
+
+## 4. API与登录
+
+Axios默认接口基址是 `/api`，超时为15000毫秒。开发时Vite将 `/api` 转发到 `http://localhost:8080`，保留路径前缀。后端端口变化时应同步修改Vite代理目标。
+
+`VITE_API_BASE_URL`可覆盖接口基址，例如在忽略提交的 `.env.local` 中设置。该变量不会修改Vite代理目标，生产构建时取值，修改后需要重启开发服务或重新构建。
+
+`src/api/`中的接口路径通常不重复写 `/api`。登录令牌保存在 `localStorage` 的 `token` 项中，请求通过 `Authorization: Bearer <token>` 携带；注销调用后端接口并清理本地状态。路由守卫只控制页面进入，服务端仍独立检查账号、权限及业务归属。
+
+新库管理员初始账号为 `admin / admin123`；已有库以实际密码为准。数据库与后端启动见[运行说明](../parts-trace-backend/docs/运行说明.md)。
+
+## 5. 构建与部署
+
+```powershell
 npm run build
-# 或
-yarn build
-```
-
-### 预览生产构建
-
-```bash
 npm run preview
-# 或
-yarn preview
 ```
 
-## 功能模块
-
-### 1. 零部件管理
-- 零部件列表查询
-- 零部件注册
-- 零部件详情查看
-- 零部件信息编辑
-
-### 2. 溯源管理
-- 溯源信息查询
-- 溯源历史查看
-- 溯源记录添加
-
-### 3. 区块链信息
-- 链信息查看（区块高度、节点数量等）
-- 区块查询
-- 交易查询
-
-### 4. 系统管理
-- 用户管理
-- 机构管理
-- 权限管理
-
-## API配置
-
-在 `src/apis/request.js` 中配置API基础地址：
-
-```javascript
-const service = axios.create({
-  baseURL: 'http://localhost:9527/api', // 后端API地址
-  timeout: 10000
-})
-```
-
-## 路由配置
-
-路由分为管理端路由和客户端路由：
-- 管理端路由: `src/router/manageNavRouter.js`
-- 客户端路由: `src/router/clientNavRouter.js`
-
-## 状态管理
-
-使用Vuex进行状态管理，主要模块：
-- `user`: 用户信息、登录状态
-- `parts`: 零部件相关状态
-
-## 组件说明
-
-### KeWeiTable
-统一的表格组件，支持：
-- 分页
-- 排序
-- 筛选
-- 自定义列
-
-### KeWeiInput
-统一的输入框组件，支持：
-- 验证
-- 格式化
-- 自定义样式
-
-## 注意事项
-
-1. 所有API请求都需要携带Token（除登录接口外）
-2. Token存储在localStorage中
-3. Token过期后自动跳转到登录页
-4. 使用Element Plus组件库，注意版本兼容性
-
-## 浏览器支持
-
-- Chrome (推荐)
-- Firefox
-- Safari
-- Edge
-
-## 许可证
-
-MIT License
+生产静态文件生成到 `dist/`。正式Web服务需提供SPA页面回退，并把 `/api` 转发到后端。本项目Vite 4的`npm run preview`在未单独配置`preview.proxy`时沿用开发代理；部署到其他Web服务时仍需配置该服务自己的API转发。完整部署关系见[部署说明](../parts-trace-backend/docs/部署说明.md)。

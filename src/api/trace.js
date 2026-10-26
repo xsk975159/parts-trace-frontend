@@ -67,12 +67,22 @@ export function verifyTraceChainByDid(did) {
   })
 }
 
+// 跨链存证总览（4 链拓扑 + 主链汇聚摘要）
+export function getCrossChainOverview(did) {
+  return request({
+    url: '/trace/cross-chain',
+    method: 'get',
+    params: did ? { did } : {}
+  })
+}
+
 // 导出溯源报告
 export function exportTraceReport(did, format = 'json') {
   return request({
     url: '/trace/report',
     method: 'get',
-    params: { did, format }
+    params: { did, format },
+    responseType: format === 'csv' ? 'blob' : 'json'
   })
 }
 
@@ -114,4 +124,21 @@ export function getWorkbenchBatchUnits(batchNumber) {
     method: 'get',
     params: { batchNumber }
   })
+}
+
+// 工作台需要完整批次记录时逐页读取，避免把默认第一页当作完整数据。
+export async function getAllEventRecords(params = {}) {
+  return collectPages(getEventList, params)
+}
+export async function getAllCredentialRecords(params = {}) {
+  return collectPages(getCertificateList, params)
+}
+async function collectPages(fetchPage, params) {
+  const list = []
+  for (let page = 1; ; page++) {
+    const response = await fetchPage({ ...params, page, pageSize: 500 })
+    const items = response.data?.list || []
+    list.push(...items)
+    if (!items.length || list.length >= Number(response.data?.total || 0)) return { code: 200, data: { list, total: list.length } }
+  }
 }

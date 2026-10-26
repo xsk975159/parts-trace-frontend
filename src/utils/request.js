@@ -19,7 +19,15 @@ service.interceptors.request.use(
 )
 
 service.interceptors.response.use(
-  response => {
+  async response => {
+    if (response.config.responseType === 'blob') {
+      if (response.data.type?.includes('application/json')) {
+        const error = JSON.parse(await response.data.text())
+        ElMessage.error(error.message || '导出失败')
+        throw new Error(error.message || '导出失败')
+      }
+      return response
+    }
     const res = response.data
 
     if (res.code !== 200) {
@@ -36,7 +44,11 @@ service.interceptors.response.use(
     return res
   },
   error => {
-    ElMessage.error(error.message || '网络错误')
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      router.replace('/login')
+    }
+    ElMessage.error(error.response?.data?.message || error.message || '网络错误')
     return Promise.reject(error)
   }
 )

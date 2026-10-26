@@ -12,3 +12,5 @@ node_modules/
 # Logs / IDE
 *.log
 .DS_Store
+.idea/
+.vscode/

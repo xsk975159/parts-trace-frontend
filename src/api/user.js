@@ -164,3 +164,5 @@ export function assignPermissionsToRole(roleId, permissionIds) {
     data: permissionIds
   })
 }
+
+export function logout() { return request({ url: '/logout', method: 'post' }) }
