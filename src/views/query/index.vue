@@ -139,7 +139,16 @@
             <div class="chain-node-role">{{ c.chainRole === 'REGULATOR' ? '监管' : '业务' }}</div>
           </div>
         </div>
+        <p v-if="crossChain.confirmation?.enabled" class="confirmation-note">
+          多机构联合核验：每条记录至少取得 {{ crossChain.confirmation.requiredVotes }} 个机构的有效签名后提交主链。
+        </p>
         <el-table :data="crossChain.records" size="small" border>
+          <el-table-column v-if="crossChain.confirmation?.enabled" label="机构核验" min-width="170">
+            <template #default="{ row }">
+              {{ ({PENDING:'正在核验',WAITING:'等待足够签名',CONFIRMED:'已核验待上链',COMMITTED:'主链已确认'})[row.confirmation?.state] || '待核验' }}
+              <span v-if="row.confirmation">（{{ row.confirmation.validVotes }}/{{ row.confirmation.requiredVotes }}）</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="businessType" label="业务类型" width="100">
             <template #default="{ row }">{{ bizTypeLabel(row.businessType) }}</template>
           </el-table-column>
